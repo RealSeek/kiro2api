@@ -20,7 +20,7 @@ import (
 // 移除全局httpClient，使用utils包中的共享客户端
 
 // StartServer 启动HTTP代理服务器
-func StartServer(port string, authToken string, authService *auth.AuthService) {
+func StartServer(port string, clientTokenManager *auth.ClientTokenManager, authService *auth.AuthService) {
 	// 设置 gin 模式
 	ginMode := os.Getenv("GIN_MODE")
 	if ginMode == "" {
@@ -68,7 +68,7 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 		r.Use(CSRFMiddleware(secureCookie))
 	}
 	// 只对 /v1 开头的端点进行认证
-	r.Use(PathBasedAuthMiddleware(authToken, []string{"/v1"}))
+	r.Use(PathBasedAuthMiddleware(clientTokenManager, []string{"/v1"}))
 
 	// 静态资源服务 - 前后端完全分离
 	r.Static("/static", "./static")
@@ -100,6 +100,9 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 
 	// Token 管理 API（动态添加/删除）
 	registerTokenManagementRoutes(r, authService, dashboardAuthEnabled)
+
+	// Client Token 管理 API
+	registerClientTokenRoutes(r, clientTokenManager, dashboardAuthEnabled)
 
 	// GET /v1/models 端点
 	r.GET("/v1/models", func(c *gin.Context) {
@@ -293,6 +296,10 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 	logger.Info("  GET  /api/tokens                - Token池状态API")
 	logger.Info("  POST /api/tokens                - 添加Token")
 	logger.Info("  DELETE /api/tokens/:index       - 删除Token")
+	logger.Info("  GET  /api/client-tokens         - 客户端令牌列表")
+	logger.Info("  POST /api/client-tokens         - 添加客户端令牌")
+	logger.Info("  DELETE /api/client-tokens/:index - 删除客户端令牌")
+	logger.Info("  POST /api/client-tokens/:index/toggle - 切换客户端令牌状态")
 	logger.Info("  GET  /v1/models                 - 模型列表")
 	logger.Info("  POST /v1/messages               - Anthropic API代理")
 	logger.Info("  POST /v1/messages/count_tokens  - Token计数接口")

@@ -167,19 +167,27 @@ go build -ldflags="-s -w" -o kiro2api main.go
 
 详见 `.env.example` 和 `auth_config.json.example`。
 
-**Token 配置方式**：
+**认证账号配置**（用于访问 AWS CodeWhisperer）：
 - JSON 字符串：`KIRO_AUTH_TOKEN='[{"auth":"Social","refreshToken":"xxx"}]'`
 - 文件路径：`KIRO_AUTH_TOKEN=/path/to/auth_config.json`（推荐）
+- 配置字段：`auth`（Social/IdC）、`refreshToken`、`clientId`、`clientSecret`、`disabled`
 
-**配置字段**：`auth`（Social/IdC）、`refreshToken`、`clientId`、`clientSecret`、`disabled`
+**客户端令牌配置**（用于 API 访问认证）：
+- 配置文件：`client_tokens.json`（自动创建）
+- 环境变量兼容：`KIRO_CLIENT_TOKEN`（单令牌，会自动导入）
+- 支持多令牌、使用统计、启用/禁用状态
+- 可通过 Dashboard 动态管理
 
 **关键环境变量**：
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `KIRO_CLIENT_TOKEN` | API 认证密钥 | (必需) |
+| `KIRO_CLIENT_TOKEN` | API 认证密钥（兼容旧配置） | (可选) |
 | `PORT` | 服务端口 | 8080 |
 | `LOG_LEVEL` | 日志级别 | info |
 | `LOG_FORMAT` | 日志格式 | json |
+| `ADMIN_PASSWORD` | Dashboard 登录密码 | (可选) |
+| `ADMIN_USERNAME` | Dashboard 登录用户名 | admin |
+| `SECURE_COOKIE` | 启用 HTTPS Cookie | false |
 | `MAX_TOOL_DESCRIPTION_LENGTH` | 工具描述最大长度 | 10000 |
 
 ## 快速测试

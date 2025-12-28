@@ -9,6 +9,8 @@ class TokenDashboard {
     constructor() {
         this.apiBaseUrl = '/api';
         this.pendingDeleteIndex = null;
+        this.pendingDeleteClientTokenIndex = null;
+        this.currentMainTab = 'auth-tokens';
 
         this.init();
     }
@@ -593,6 +595,304 @@ class TokenDashboard {
                 </td>
             </tr>
         `;
+    }
+
+    // ==================== 主 Tab 切换 ====================
+
+    /**
+     * 切换主 Tab
+     */
+    switchMainTab(tabName) {
+        this.currentMainTab = tabName;
+
+        // 更新 Tab 按钮状态
+        document.querySelectorAll('.main-tab-btn').forEach((btn, index) => {
+            btn.classList.toggle('active',
+                (tabName === 'auth-tokens' && index === 0) ||
+                (tabName === 'client-tokens' && index === 1)
+            );
+        });
+
+        // 更新面板显示
+        document.getElementById('authTokensPanel').classList.toggle('active', tabName === 'auth-tokens');
+        document.getElementById('clientTokensPanel').classList.toggle('active', tabName === 'client-tokens');
+
+        // 切换到客户端令牌时自动刷新
+        if (tabName === 'client-tokens') {
+            this.refreshClientTokens();
+        }
+    }
+
+    // ==================== 客户端令牌管理 ====================
+
+    /**
+     * 刷新客户端令牌列表
+     */
+    async refreshClientTokens() {
+        const tbody = document.getElementById('clientTokenTableBody');
+        this.showClientTokenLoading(tbody, '正在刷新客户端令牌数据...');
+
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/client-tokens`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            this.updateClientTokenTable(data);
+            this.updateClientTokenStatusBar(data);
+            this.updateClientTokenLastUpdateTime();
+
+        } catch (error) {
+            console.error('刷新客户端令牌数据失败:', error);
+            this.showClientTokenError(tbody, `加载失败: ${error.message}`);
+        }
+    }
+
+    /**
+     * 更新客户端令牌表格
+     */
+    updateClientTokenTable(data) {
+        const tbody = document.getElementById('clientTokenTableBody');
+
+        if (!data.tokens || data.tokens.length === 0) {
+            this.showClientTokenEmpty(tbody);
+            return;
+        }
+
+        const rows = data.tokens.map((token, index) => this.createClientTokenRow(token, index)).join('');
+        tbody.innerHTML = rows;
+    }
+
+    /**
+     * 创建单个客户端令牌行
+     */
+    createClientTokenRow(token, index) {
+        const statusClass = token.disabled ? 'status-disabled' : 'status-active';
+        const statusText = token.disabled ? '已禁用' : '正常';
+        const toggleBtnClass = token.disabled ? 'btn-toggle disabled' : 'btn-toggle';
+        const toggleBtnText = token.disabled ? '启用' : '禁用';
+
+        return `
+            <tr>
+                <td>${token.name || '未命名'}</td>
+                <td><span class="token-preview">${token.token || 'N/A'}</span></td>
+                <td>${token.requestCount || 0}</td>
+                <td>${this.formatDateTime(token.lastUsedAt)}</td>
+                <td>${this.formatDateTime(token.createdAt)}</td>
+                <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                <td>
+                    <button class="${toggleBtnClass}" onclick="dashboard.toggleClientToken(${index})">${toggleBtnText}</button>
+                    <button class="btn-delete-small" onclick="dashboard.showDeleteClientTokenConfirmModal(${index})">删除</button>
+                </td>
+            </tr>
+        `;
+    }
+
+    /**
+     * 更新客户端令牌状态栏
+     */
+    updateClientTokenStatusBar(data) {
+        this.updateElement('totalClientTokens', data.total || 0);
+    }
+
+    /**
+     * 更新客户端令牌最后更新时间
+     */
+    updateClientTokenLastUpdateTime() {
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('zh-CN', { hour12: false });
+        this.updateElement('clientTokenLastUpdate', timeStr);
+    }
+
+    /**
+     * 显示客户端令牌空状态
+     */
+    showClientTokenEmpty(container) {
+        container.innerHTML = `
+            <tr>
+                <td colspan="7" class="empty-state">
+                    <div class="empty-icon">🔑</div>
+                    <p>暂无客户端令牌</p>
+                    <p class="empty-hint">点击上方"添加令牌"按钮添加第一个客户端令牌</p>
+                </td>
+            </tr>
+        `;
+    }
+
+    /**
+     * 显示客户端令牌加载状态
+     */
+    showClientTokenLoading(container, message) {
+        container.innerHTML = `
+            <tr>
+                <td colspan="7" class="loading">
+                    <div class="spinner"></div>
+                    ${message}
+                </td>
+            </tr>
+        `;
+    }
+
+    /**
+     * 显示客户端令牌错误
+     */
+    showClientTokenError(container, message) {
+        container.innerHTML = `
+            <tr>
+                <td colspan="7" class="error">
+                    ${message}
+                </td>
+            </tr>
+        `;
+    }
+
+    // ==================== 添加客户端令牌 ====================
+
+    /**
+     * 显示添加客户端令牌模态框
+     */
+    showAddClientTokenModal() {
+        document.getElementById('addClientTokenModal').style.display = 'flex';
+        this.resetAddClientTokenForm();
+    }
+
+    /**
+     * 隐藏添加客户端令牌模态框
+     */
+    hideAddClientTokenModal() {
+        document.getElementById('addClientTokenModal').style.display = 'none';
+        this.resetAddClientTokenForm();
+    }
+
+    /**
+     * 重置添加客户端令牌表单
+     */
+    resetAddClientTokenForm() {
+        document.getElementById('clientTokenName').value = '';
+        document.getElementById('clientTokenValue').value = '';
+        document.getElementById('addClientTokenError').style.display = 'none';
+    }
+
+    /**
+     * 添加客户端令牌
+     */
+    async addClientToken() {
+        const name = document.getElementById('clientTokenName').value.trim();
+        const token = document.getElementById('clientTokenValue').value.trim();
+
+        if (!token) {
+            this.showClientTokenFormError('请输入令牌值');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/client-tokens`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': this.getCsrfToken()
+                },
+                body: JSON.stringify({ token, name })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.hideAddClientTokenModal();
+                this.refreshClientTokens();
+                this.showToast('客户端令牌添加成功');
+            } else {
+                this.showClientTokenFormError(result.message || '添加失败');
+            }
+        } catch (error) {
+            console.error('添加客户端令牌失败:', error);
+            this.showClientTokenFormError('网络错误: ' + error.message);
+        }
+    }
+
+    /**
+     * 显示客户端令牌表单错误
+     */
+    showClientTokenFormError(message) {
+        const errorEl = document.getElementById('addClientTokenError');
+        errorEl.textContent = message;
+        errorEl.style.display = 'block';
+    }
+
+    // ==================== 删除客户端令牌 ====================
+
+    /**
+     * 显示删除客户端令牌确认模态框
+     */
+    showDeleteClientTokenConfirmModal(index) {
+        this.pendingDeleteClientTokenIndex = index;
+        document.getElementById('deleteClientTokenConfirmModal').style.display = 'flex';
+    }
+
+    /**
+     * 隐藏删除客户端令牌确认模态框
+     */
+    hideDeleteClientTokenConfirmModal() {
+        this.pendingDeleteClientTokenIndex = null;
+        document.getElementById('deleteClientTokenConfirmModal').style.display = 'none';
+    }
+
+    /**
+     * 确认删除客户端令牌
+     */
+    async confirmDeleteClientToken() {
+        if (this.pendingDeleteClientTokenIndex === null) return;
+
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/client-tokens/${this.pendingDeleteClientTokenIndex}`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRF-Token': this.getCsrfToken()
+                }
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.hideDeleteClientTokenConfirmModal();
+                this.refreshClientTokens();
+                this.showToast('客户端令牌删除成功');
+            } else {
+                this.showToast(result.message || '删除失败', 'error');
+            }
+        } catch (error) {
+            console.error('删除客户端令牌失败:', error);
+            this.showToast('网络错误: ' + error.message, 'error');
+        }
+    }
+
+    // ==================== 切换客户端令牌状态 ====================
+
+    /**
+     * 切换客户端令牌启用/禁用状态
+     */
+    async toggleClientToken(index) {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/client-tokens/${index}/toggle`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-Token': this.getCsrfToken()
+                }
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.refreshClientTokens();
+                this.showToast('状态切换成功');
+            } else {
+                this.showToast(result.message || '切换失败', 'error');
+            }
+        } catch (error) {
+            console.error('切换客户端令牌状态失败:', error);
+            this.showToast('网络错误: ' + error.message, 'error');
+        }
     }
 }
 

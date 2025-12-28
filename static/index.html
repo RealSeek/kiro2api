@@ -13,60 +13,118 @@
             <p>实时监控Token池状态和使用情况</p>
         </div>
 
-        <div class="controls">
-            <button class="refresh-btn" onclick="dashboard.refreshTokens()">
-                刷新状态
-            </button>
-            <button class="refresh-all-btn" onclick="dashboard.refreshAllTokens()">
-                刷新全部Token
-            </button>
-            <button class="add-btn" onclick="dashboard.showAddTokenModal()">
-                + 添加账号
-            </button>
+        <!-- Tab 导航 -->
+        <div class="main-tabs">
+            <button class="main-tab-btn active" onclick="dashboard.switchMainTab('auth-tokens')">认证账号池</button>
+            <button class="main-tab-btn" onclick="dashboard.switchMainTab('client-tokens')">客户端令牌</button>
             <button class="logout-btn" onclick="dashboard.logout()" id="logoutBtn" style="display: none;">
                 退出登录
             </button>
         </div>
 
-        <div class="status-bar">
-            <div class="status-item">
-                <span class="status-label">总Token数</span>
-                <span class="status-value" id="totalTokens">-</span>
+        <!-- 认证账号池面板 -->
+        <div id="authTokensPanel" class="main-panel active">
+            <div class="controls">
+                <button class="refresh-btn" onclick="dashboard.refreshTokens()">
+                    刷新状态
+                </button>
+                <button class="refresh-all-btn" onclick="dashboard.refreshAllTokens()">
+                    刷新全部Token
+                </button>
+                <button class="add-btn" onclick="dashboard.showAddTokenModal()">
+                    + 添加账号
+                </button>
             </div>
-            <div class="status-item">
-                <span class="status-label">可用Token</span>
-                <span class="status-value" id="activeTokens">-</span>
+
+            <div class="status-bar">
+                <div class="status-item">
+                    <span class="status-label">总Token数</span>
+                    <span class="status-value" id="totalTokens">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">可用Token</span>
+                    <span class="status-value" id="activeTokens">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">最后更新</span>
+                    <span class="status-value" id="lastUpdate">-</span>
+                </div>
             </div>
-            <div class="status-item">
-                <span class="status-label">最后更新</span>
-                <span class="status-value" id="lastUpdate">-</span>
+
+            <div class="main-card">
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>用户邮箱</th>
+                                <th>Token预览</th>
+                                <th>认证方式</th>
+                                <th>剩余次数</th>
+                                <th>过期时间</th>
+                                <th>最后使用</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tokenTableBody">
+                            <tr>
+                                <td colspan="8" class="loading">
+                                    <div class="spinner"></div>
+                                    正在加载Token数据...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
-        <div class="main-card">
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>用户邮箱</th>
-                            <th>Token预览</th>
-                            <th>认证方式</th>
-                            <th>剩余次数</th>
-                            <th>过期时间</th>
-                            <th>最后使用</th>
-                            <th>状态</th>
-                            <th>操作</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tokenTableBody">
-                        <tr>
-                            <td colspan="8" class="loading">
-                                <div class="spinner"></div>
-                                正在加载Token数据...
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+        <!-- 客户端令牌面板 -->
+        <div id="clientTokensPanel" class="main-panel">
+            <div class="controls">
+                <button class="refresh-btn" onclick="dashboard.refreshClientTokens()">
+                    刷新状态
+                </button>
+                <button class="add-btn" onclick="dashboard.showAddClientTokenModal()">
+                    + 添加令牌
+                </button>
+            </div>
+
+            <div class="status-bar">
+                <div class="status-item">
+                    <span class="status-label">总令牌数</span>
+                    <span class="status-value" id="totalClientTokens">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">最后更新</span>
+                    <span class="status-value" id="clientTokenLastUpdate">-</span>
+                </div>
+            </div>
+
+            <div class="main-card">
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>名称</th>
+                                <th>令牌预览</th>
+                                <th>请求次数</th>
+                                <th>最后使用</th>
+                                <th>创建时间</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="clientTokenTableBody">
+                            <tr>
+                                <td colspan="7" class="loading">
+                                    <div class="spinner"></div>
+                                    正在加载客户端令牌数据...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -148,6 +206,50 @@
             <div class="modal-footer">
                 <button class="btn-cancel" onclick="dashboard.hideDeleteConfirmModal()">取消</button>
                 <button class="btn-danger" onclick="dashboard.confirmDeleteToken()">删除</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加客户端令牌模态框 -->
+    <div id="addClientTokenModal" class="modal">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>添加客户端令牌</h2>
+                <span class="close-btn" onclick="dashboard.hideAddClientTokenModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="clientTokenName">名称（可选）</label>
+                    <input type="text" id="clientTokenName" placeholder="例如：开发环境、生产环境">
+                    <small>用于标识不同用途的令牌</small>
+                </div>
+                <div class="form-group">
+                    <label for="clientTokenValue">令牌值 *</label>
+                    <input type="text" id="clientTokenValue" placeholder="输入客户端令牌">
+                    <small>用于 API 认证的密钥</small>
+                </div>
+                <div id="addClientTokenError" class="form-error" style="display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="dashboard.hideAddClientTokenModal()">取消</button>
+                <button class="btn-confirm" onclick="dashboard.addClientToken()">添加</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 确认删除客户端令牌模态框 -->
+    <div id="deleteClientTokenConfirmModal" class="modal">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>确认删除</h2>
+                <span class="close-btn" onclick="dashboard.hideDeleteClientTokenConfirmModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>确定要删除此客户端令牌吗？此操作不可恢复。</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="dashboard.hideDeleteClientTokenConfirmModal()">取消</button>
+                <button class="btn-danger" onclick="dashboard.confirmDeleteClientToken()">删除</button>
             </div>
         </div>
     </div>

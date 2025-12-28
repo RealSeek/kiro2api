@@ -5,9 +5,20 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"kiro2api/auth"
+
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
+
+// createTestClientTokenManager 创建测试用的 ClientTokenManager
+func createTestClientTokenManager(tokens ...string) *auth.ClientTokenManager {
+	manager, _ := auth.NewClientTokenManager()
+	for _, token := range tokens {
+		manager.AddToken(token, "test")
+	}
+	return manager
+}
 
 func TestPathBasedAuthMiddleware_ValidToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -16,10 +27,10 @@ func TestPathBasedAuthMiddleware_ValidToken(t *testing.T) {
 	c, router := gin.CreateTestContext(w)
 
 	// 配置中间件
-	authToken := "test-token-123"
+	manager := createTestClientTokenManager("test-token-123")
 	protectedPrefixes := []string{"/v1/"}
 
-	router.Use(PathBasedAuthMiddleware(authToken, protectedPrefixes))
+	router.Use(PathBasedAuthMiddleware(manager, protectedPrefixes))
 	router.POST("/v1/messages", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "success"})
 	})
@@ -39,10 +50,10 @@ func TestPathBasedAuthMiddleware_InvalidToken(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, router := gin.CreateTestContext(w)
 
-	authToken := "test-token-123"
+	manager := createTestClientTokenManager("test-token-123")
 	protectedPrefixes := []string{"/v1/"}
 
-	router.Use(PathBasedAuthMiddleware(authToken, protectedPrefixes))
+	router.Use(PathBasedAuthMiddleware(manager, protectedPrefixes))
 	router.POST("/v1/messages", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "success"})
 	})
@@ -61,10 +72,10 @@ func TestPathBasedAuthMiddleware_MissingAuthHeader(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, router := gin.CreateTestContext(w)
 
-	authToken := "test-token-123"
+	manager := createTestClientTokenManager("test-token-123")
 	protectedPrefixes := []string{"/v1/"}
 
-	router.Use(PathBasedAuthMiddleware(authToken, protectedPrefixes))
+	router.Use(PathBasedAuthMiddleware(manager, protectedPrefixes))
 	router.POST("/v1/messages", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "success"})
 	})
@@ -82,10 +93,10 @@ func TestPathBasedAuthMiddleware_UnprotectedPath(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, router := gin.CreateTestContext(w)
 
-	authToken := "test-token-123"
+	manager := createTestClientTokenManager("test-token-123")
 	protectedPrefixes := []string{"/v1/"}
 
-	router.Use(PathBasedAuthMiddleware(authToken, protectedPrefixes))
+	router.Use(PathBasedAuthMiddleware(manager, protectedPrefixes))
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy"})
 	})
@@ -103,10 +114,10 @@ func TestPathBasedAuthMiddleware_EmptyProtectedPrefixes(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, router := gin.CreateTestContext(w)
 
-	authToken := "test-token-123"
+	manager := createTestClientTokenManager("test-token-123")
 	protectedPrefixes := []string{}
 
-	router.Use(PathBasedAuthMiddleware(authToken, protectedPrefixes))
+	router.Use(PathBasedAuthMiddleware(manager, protectedPrefixes))
 	router.POST("/any/path", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "success"})
 	})
@@ -124,10 +135,10 @@ func TestPathBasedAuthMiddleware_InvalidBearerFormat(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, router := gin.CreateTestContext(w)
 
-	authToken := "test-token-123"
+	manager := createTestClientTokenManager("test-token-123")
 	protectedPrefixes := []string{"/v1/"}
 
-	router.Use(PathBasedAuthMiddleware(authToken, protectedPrefixes))
+	router.Use(PathBasedAuthMiddleware(manager, protectedPrefixes))
 	router.POST("/v1/messages", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "success"})
 	})
@@ -146,10 +157,10 @@ func TestPathBasedAuthMiddleware_MultipleProtectedPrefixes(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, router := gin.CreateTestContext(w)
 
-	authToken := "test-token-123"
+	manager := createTestClientTokenManager("test-token-123")
 	protectedPrefixes := []string{"/v1/", "/api/"}
 
-	router.Use(PathBasedAuthMiddleware(authToken, protectedPrefixes))
+	router.Use(PathBasedAuthMiddleware(manager, protectedPrefixes))
 	router.POST("/api/data", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "success"})
 	})

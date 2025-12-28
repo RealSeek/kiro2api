@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"kiro2api/auth"
 	"kiro2api/logger"
 	"kiro2api/utils"
 
@@ -11,7 +12,8 @@ import (
 )
 
 // PathBasedAuthMiddleware 创建基于路径的API密钥验证中间件
-func PathBasedAuthMiddleware(authToken string, protectedPrefixes []string) gin.HandlerFunc {
+// 支持 ClientTokenManager 多令牌验证
+func PathBasedAuthMiddleware(clientTokenManager *auth.ClientTokenManager, protectedPrefixes []string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 
@@ -22,7 +24,7 @@ func PathBasedAuthMiddleware(authToken string, protectedPrefixes []string) gin.H
 			return
 		}
 
-		if !validateAPIKey(c, authToken) {
+		if !validateAPIKeyWithManager(c, clientTokenManager) {
 			c.Abort()
 			return
 		}
@@ -117,6 +119,33 @@ func validateAPIKey(c *gin.Context, authToken string) bool {
 		logger.Error("authToken验证失败",
 			logger.String("expected", "***"),
 			logger.String("provided", "***"))
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "401"})
+		return false
+	}
+
+	return true
+}
+
+// validateAPIKeyWithManager 使用 ClientTokenManager 验证API密钥
+func validateAPIKeyWithManager(c *gin.Context, manager *auth.ClientTokenManager) bool {
+	providedApiKey := extractAPIKey(c)
+
+	if providedApiKey == "" {
+		logger.Warn("请求缺少Authorization或x-api-key头")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "401"})
+		return false
+	}
+
+	// 检查是否有配置的令牌
+	if !manager.HasTokens() {
+		logger.Error("未配置任何客户端令牌")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "401", "message": "未配置客户端令牌"})
+		return false
+	}
+
+	// 验证令牌（同时记录使用统计）
+	if !manager.ValidateToken(providedApiKey) {
+		logger.Warn("客户端令牌验证失败")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "401"})
 		return false
 	}

@@ -92,6 +92,73 @@ body {
     background: rgba(244, 67, 54, 0.7);
 }
 
+/* 主 Tab 导航样式 */
+.main-tabs {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 30px;
+}
+
+.main-tab-btn {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: rgba(255,255,255,0.8);
+    padding: 12px 30px;
+    border-radius: 25px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+.main-tab-btn:hover {
+    background: rgba(255,255,255,0.25);
+    color: white;
+}
+
+.main-tab-btn.active {
+    background: rgba(255,255,255,0.3);
+    border-color: rgba(255,255,255,0.5);
+    color: white;
+    font-weight: 500;
+}
+
+/* 主面板样式 */
+.main-panel {
+    display: none;
+}
+
+.main-panel.active {
+    display: block;
+}
+
+/* 切换按钮样式 */
+.btn-toggle {
+    background: rgba(33, 150, 243, 0.6);
+    border: none;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+    margin-right: 6px;
+}
+
+.btn-toggle:hover {
+    background: rgba(33, 150, 243, 0.9);
+}
+
+.btn-toggle.disabled {
+    background: rgba(158, 158, 158, 0.6);
+}
+
+.btn-toggle.disabled:hover {
+    background: rgba(158, 158, 158, 0.8);
+}
+
 .status-bar {
     background: rgba(255,255,255,0.1);
     border: 1px solid rgba(255,255,255,0.2);
