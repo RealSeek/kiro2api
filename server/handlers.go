@@ -488,18 +488,12 @@ func maskEmail(email string) string {
 }
 
 // handleTokenPoolAPI 处理Token池API请求 - 恢复多token显示
-func handleTokenPoolAPI(c *gin.Context) {
+func handleTokenPoolAPI(c *gin.Context, authService *auth.AuthService) {
 	var tokenList []any
 	var activeCount int
 
-	// 从auth包获取配置信息
-	configs, err := auth.GetConfigs()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "加载配置失败: " + err.Error(),
-		})
-		return
-	}
+	// 从 authService 获取配置信息（支持动态添加的配置）
+	configs := authService.GetConfigs()
 
 	if len(configs) == 0 {
 		c.JSON(http.StatusOK, gin.H{

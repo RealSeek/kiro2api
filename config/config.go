@@ -137,6 +137,7 @@ var ModelMap = map[string]string{
 	"claude-3-7-sonnet-20250219": "CLAUDE_3_7_SONNET_20250219_V1_0",
 	"claude-3-5-haiku-20241022":  "auto",
 	"claude-haiku-4-5-20251001":  "auto",
+	"claude-opus-4-5-20251101":   "CLAUDE_OPUS_4_5_20251101_V1_0",
 }
 
 // RefreshTokenURL 刷新token的URL (social方式)

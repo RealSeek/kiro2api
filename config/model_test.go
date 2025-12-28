@@ -30,6 +30,12 @@ func TestModelMap_Claude35Haiku(t *testing.T) {
 	assert.Equal(t, "auto", model)
 }
 
+func TestModelMap_ClaudeOpus45(t *testing.T) {
+	model, exists := ModelMap["claude-opus-4-5-20251101"]
+	assert.True(t, exists)
+	assert.Equal(t, "CLAUDE_OPUS_4_5_20251101_V1_0", model)
+}
+
 func TestModelMap_NonExistentModel(t *testing.T) {
 	_, exists := ModelMap["non-existent-model"]
 	assert.False(t, exists)
@@ -42,6 +48,7 @@ func TestModelMap_AllModelsHaveMapping(t *testing.T) {
 		"claude-sonnet-4-20250514",
 		"claude-3-7-sonnet-20250219",
 		"claude-3-5-haiku-20241022",
+		"claude-opus-4-5-20251101",
 	}
 
 	for _, model := range expectedModels {

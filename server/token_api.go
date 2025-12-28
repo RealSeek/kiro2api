@@ -11,11 +11,12 @@ import (
 )
 
 // AddTokenRequest 添加 Token 的请求结构
+// 字段名与前端 dashboard.js 保持一致（驼峰命名）
 type AddTokenRequest struct {
-	AuthType     string `json:"auth_type"`               // Social 或 IdC
-	RefreshToken string `json:"refresh_token"`           // 刷新令牌
-	ClientID     string `json:"client_id,omitempty"`     // IdC 认证需要
-	ClientSecret string `json:"client_secret,omitempty"` // IdC 认证需要
+	Auth         string `json:"auth"`                    // Social 或 IdC
+	RefreshToken string `json:"refreshToken"`            // 刷新令牌
+	ClientID     string `json:"clientId,omitempty"`      // IdC 认证需要
+	ClientSecret string `json:"clientSecret,omitempty"`  // IdC 认证需要
 	Disabled     bool   `json:"disabled,omitempty"`      // 是否禁用
 }
 
@@ -55,31 +56,31 @@ func handleAddToken(c *gin.Context, authService *auth.AuthService) {
 	if req.RefreshToken == "" {
 		c.JSON(http.StatusBadRequest, TokenAPIResponse{
 			Success: false,
-			Message: "refresh_token 不能为空",
+			Message: "refreshToken 不能为空",
 		})
 		return
 	}
 
 	// 设置默认认证类型
-	if req.AuthType == "" {
-		req.AuthType = auth.AuthMethodSocial
+	if req.Auth == "" {
+		req.Auth = auth.AuthMethodSocial
 	}
 
 	// 验证认证类型
-	if req.AuthType != auth.AuthMethodSocial && req.AuthType != auth.AuthMethodIdC {
+	if req.Auth != auth.AuthMethodSocial && req.Auth != auth.AuthMethodIdC {
 		c.JSON(http.StatusBadRequest, TokenAPIResponse{
 			Success: false,
-			Message: "auth_type 必须是 Social 或 IdC",
+			Message: "auth 必须是 Social 或 IdC",
 		})
 		return
 	}
 
 	// IdC 认证需要额外字段
-	if req.AuthType == auth.AuthMethodIdC {
+	if req.Auth == auth.AuthMethodIdC {
 		if req.ClientID == "" || req.ClientSecret == "" {
 			c.JSON(http.StatusBadRequest, TokenAPIResponse{
 				Success: false,
-				Message: "IdC 认证需要 client_id 和 client_secret",
+				Message: "IdC 认证需要 clientId 和 clientSecret",
 			})
 			return
 		}
@@ -87,7 +88,7 @@ func handleAddToken(c *gin.Context, authService *auth.AuthService) {
 
 	// 构建 AuthConfig
 	config := auth.AuthConfig{
-		AuthType:     req.AuthType,
+		AuthType:     req.Auth,
 		RefreshToken: req.RefreshToken,
 		ClientID:     req.ClientID,
 		ClientSecret: req.ClientSecret,
@@ -105,7 +106,7 @@ func handleAddToken(c *gin.Context, authService *auth.AuthService) {
 	}
 
 	logger.Info("成功添加Token配置",
-		logger.String("auth_type", req.AuthType),
+		logger.String("auth_type", req.Auth),
 		logger.Int("total_count", authService.GetConfigCount()))
 
 	c.JSON(http.StatusOK, TokenAPIResponse{
