@@ -75,7 +75,7 @@ func (as *AuthService) GetConfigs() []AuthConfig {
 	return as.configs
 }
 
-// AddConfig 添加新的认证配置
+// AddConfig 添加新的认证配置（自动持久化，失败时回滚）
 func (as *AuthService) AddConfig(config AuthConfig) error {
 	if config.RefreshToken == "" {
 		return fmt.Errorf("RefreshToken 不能为空")
@@ -89,8 +89,24 @@ func (as *AuthService) AddConfig(config AuthConfig) error {
 		}
 	}
 
+	// 保存旧配置用于回滚
+	oldConfigs := make([]AuthConfig, len(as.configs))
+	copy(oldConfigs, as.configs)
+
+	// 添加到内存配置
 	as.configs = append(as.configs, config)
 	as.tokenManager.AddConfig(config)
+
+	// 持久化到文件
+	if err := SaveConfigs(as.configs); err != nil {
+		// 回滚内存状态
+		as.configs = oldConfigs
+		as.tokenManager = NewTokenManager(oldConfigs)
+		logger.Error("持久化配置失败，已回滚",
+			logger.Err(err),
+			logger.Int("config_count", len(oldConfigs)))
+		return fmt.Errorf("保存配置失败: %w", err)
+	}
 
 	logger.Info("添加新的认证配置",
 		logger.String("auth_type", config.AuthType),
@@ -99,15 +115,32 @@ func (as *AuthService) AddConfig(config AuthConfig) error {
 	return nil
 }
 
-// RemoveConfig 根据索引移除配置
+// RemoveConfig 根据索引移除配置（自动持久化，失败时回滚）
 func (as *AuthService) RemoveConfig(index int) error {
 	if index < 0 || index >= len(as.configs) {
 		return fmt.Errorf("无效的索引: %d", index)
 	}
 
+	// 保存旧配置用于回滚
+	oldConfigs := make([]AuthConfig, len(as.configs))
+	copy(oldConfigs, as.configs)
+	oldTokenManager := as.tokenManager
+
+	// 从内存中移除
 	as.configs = append(as.configs[:index], as.configs[index+1:]...)
 	// 重建 TokenManager 以确保状态一致
 	as.tokenManager = NewTokenManager(as.configs)
+
+	// 持久化到文件
+	if err := SaveConfigs(as.configs); err != nil {
+		// 回滚内存状态
+		as.configs = oldConfigs
+		as.tokenManager = oldTokenManager
+		logger.Error("持久化配置失败，已回滚",
+			logger.Err(err),
+			logger.Int("config_count", len(oldConfigs)))
+		return fmt.Errorf("保存配置失败: %w", err)
+	}
 
 	logger.Info("移除认证配置",
 		logger.Int("removed_index", index),
