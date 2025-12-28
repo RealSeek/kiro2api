@@ -44,8 +44,6 @@ func TestTokenManager_ConcurrentAccess(t *testing.T) {
 			Available: 10000.0, // 足够支持50×100=5000次调用
 		}
 	}
-	// 关键修复：更新lastRefresh避免触发真实的token刷新
-	tm.lastRefresh = time.Now()
 	tm.mutex.Unlock()
 
 	// 并发测试参数
@@ -117,8 +115,6 @@ func TestTokenManager_ConcurrentRefresh(t *testing.T) {
 		CachedAt:  time.Now(),
 		Available: 10000.0, // 足够支持20×50=1000次调用
 	}
-	// 关键修复：更新lastRefresh避免触发真实的token刷新
-	tm.lastRefresh = time.Now()
 	tm.mutex.Unlock()
 
 	numGoroutines := 20
@@ -166,8 +162,6 @@ func TestTokenManager_RaceCondition(t *testing.T) {
 			Available: 50.0,
 		}
 	}
-	// 关键修复：更新lastRefresh避免触发真实的token刷新
-	tm.lastRefresh = time.Now()
 	tm.mutex.Unlock()
 
 	var wg sync.WaitGroup
@@ -210,8 +204,6 @@ func TestTokenManager_SequentialSelection(t *testing.T) {
 			Available: 5.0, // 每个token只有5次使用机会
 		}
 	}
-	// 关键修复：更新lastRefresh避免触发真实的token刷新
-	tm.lastRefresh = time.Now()
 	tm.mutex.Unlock()
 
 	// 验证顺序选择：使用getBestToken会递减Available

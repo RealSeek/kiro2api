@@ -14,11 +14,10 @@ type TokenManager struct {
 	cache        *SimpleTokenCache
 	configs      []AuthConfig
 	mutex        sync.RWMutex
-	lastRefresh  time.Time
 	configOrder  []string        // 配置顺序
 	currentIndex int             // 当前使用的token索引
 	exhausted    map[string]bool // 已耗尽的token记录
-	refreshing   bool            // 是否正在刷新
+	refreshing   map[string]bool // 正在刷新的token记录
 }
 
 // SimpleTokenCache 简化的token缓存（纯数据结构，无锁）
@@ -50,7 +49,7 @@ func NewTokenManager(configs []AuthConfig) *TokenManager {
 	// 生成配置顺序
 	configOrder := generateConfigOrder(configs)
 
-	logger.Info("TokenManager初始化（顺序选择策略）",
+	logger.Info("TokenManager初始化（按需刷新策略）",
 		logger.Int("config_count", len(configs)),
 		logger.Int("config_order_count", len(configOrder)))
 
@@ -60,21 +59,15 @@ func NewTokenManager(configs []AuthConfig) *TokenManager {
 		configOrder:  configOrder,
 		currentIndex: 0,
 		exhausted:    make(map[string]bool),
+		refreshing:   make(map[string]bool),
 	}
 }
 
 // getBestToken 获取最优可用token
-// 统一锁管理：所有操作在单一锁保护下完成，避免多次加锁/解锁
+// 按需刷新：只刷新当前选中的token，不刷新全部
 func (tm *TokenManager) getBestToken() (types.TokenInfo, error) {
 	tm.mutex.Lock()
 	defer tm.mutex.Unlock()
-
-	// 检查是否需要刷新缓存（在锁内）
-	if time.Since(tm.lastRefresh) > config.TokenCacheTTL {
-		if err := tm.refreshCacheUnlocked(); err != nil {
-			logger.Warn("刷新token缓存失败", logger.Err(err))
-		}
-	}
 
 	// 选择最优token（内部方法，不加锁）
 	bestToken := tm.selectBestTokenUnlocked()
@@ -92,17 +85,10 @@ func (tm *TokenManager) getBestToken() (types.TokenInfo, error) {
 }
 
 // GetBestTokenWithUsage 获取最优可用token（包含使用信息）
-// 统一锁管理：所有操作在单一锁保护下完成
+// 按需刷新：只刷新当前选中的token，不刷新全部
 func (tm *TokenManager) GetBestTokenWithUsage() (*types.TokenWithUsage, error) {
 	tm.mutex.Lock()
 	defer tm.mutex.Unlock()
-
-	// 检查是否需要刷新缓存（在锁内）
-	if time.Since(tm.lastRefresh) > config.TokenCacheTTL {
-		if err := tm.refreshCacheUnlocked(); err != nil {
-			logger.Warn("刷新token缓存失败", logger.Err(err))
-		}
-	}
 
 	// 选择最优token（内部方法，不加锁）
 	bestToken := tm.selectBestTokenUnlocked()
@@ -135,43 +121,53 @@ func (tm *TokenManager) GetBestTokenWithUsage() (*types.TokenWithUsage, error) {
 
 // selectBestTokenUnlocked 按配置顺序选择下一个可用token
 // 内部方法：调用者必须持有 tm.mutex
-// 重构说明：从selectBestToken改为Unlocked后缀，明确锁约定
+// 按需刷新：当选中的token缓存过期时，触发该token的异步刷新
 func (tm *TokenManager) selectBestTokenUnlocked() *CachedToken {
 	// 调用者已持有 tm.mutex，无需额外加锁
 
-	// 如果没有配置顺序，降级到按map遍历顺序
+	// 如果没有配置顺序，返回nil
 	if len(tm.configOrder) == 0 {
-		for key, cached := range tm.cache.tokens {
-			if time.Since(cached.CachedAt) <= tm.cache.ttl && cached.IsUsable() {
-				logger.Debug("顺序策略选择token（无顺序配置）",
-					logger.String("selected_key", key),
-					logger.Float64("available_count", cached.Available))
-				return cached
-			}
-		}
 		return nil
 	}
 
 	// 从当前索引开始，找到第一个可用的token
 	for attempts := 0; attempts < len(tm.configOrder); attempts++ {
 		currentKey := tm.configOrder[tm.currentIndex]
+		currentIdx := tm.currentIndex
 
-		// 检查这个token是否存在且可用
-		if cached, exists := tm.cache.tokens[currentKey]; exists {
-			// 检查token是否过期
-			if time.Since(cached.CachedAt) > tm.cache.ttl {
-				tm.exhausted[currentKey] = true
-				tm.currentIndex = (tm.currentIndex + 1) % len(tm.configOrder)
-				continue
+		// 检查这个token是否存在于缓存中
+		cached, exists := tm.cache.tokens[currentKey]
+
+		if exists {
+			// 检查缓存是否过期
+			cacheExpired := time.Since(cached.CachedAt) > tm.cache.ttl
+
+			if cacheExpired {
+				// 缓存过期，触发异步刷新（如果没有正在刷新）
+				if !tm.refreshing[currentKey] {
+					tm.triggerAsyncRefreshUnlocked(currentIdx, currentKey)
+				}
+				// 即使缓存过期，如果token本身还可用，仍然返回它
+				if cached.IsUsable() {
+					logger.Debug("使用过期缓存的token（已触发异步刷新）",
+						logger.String("cache_key", currentKey),
+						logger.Int("index", currentIdx))
+					return cached
+				}
+			} else {
+				// 缓存未过期，检查token是否可用
+				if cached.IsUsable() {
+					logger.Debug("顺序策略选择token",
+						logger.String("selected_key", currentKey),
+						logger.Int("index", currentIdx),
+						logger.Float64("available_count", cached.Available))
+					return cached
+				}
 			}
-
-			// 检查token是否可用
-			if cached.IsUsable() {
-				logger.Debug("顺序策略选择token",
-					logger.String("selected_key", currentKey),
-					logger.Int("index", tm.currentIndex),
-					logger.Float64("available_count", cached.Available))
-				return cached
+		} else {
+			// 缓存中不存在，触发异步刷新
+			if !tm.refreshing[currentKey] {
+				tm.triggerAsyncRefreshUnlocked(currentIdx, currentKey)
 			}
 		}
 
@@ -192,64 +188,40 @@ func (tm *TokenManager) selectBestTokenUnlocked() *CachedToken {
 	return nil
 }
 
-// refreshCacheUnlocked 触发异步分批刷新token缓存
+// triggerAsyncRefreshUnlocked 触发单个token的异步刷新
 // 内部方法：调用者必须持有 tm.mutex
-func (tm *TokenManager) refreshCacheUnlocked() error {
-	// 如果已经在刷新中，跳过
-	if tm.refreshing {
-		logger.Debug("token缓存刷新已在进行中，跳过")
-		return nil
+func (tm *TokenManager) triggerAsyncRefreshUnlocked(index int, cacheKey string) {
+	if index < 0 || index >= len(tm.configs) {
+		return
 	}
 
-	tm.refreshing = true
-	tm.lastRefresh = time.Now()
-
-	// 启动异步分批刷新
-	go tm.asyncBatchRefresh()
-
-	return nil
-}
-
-// asyncBatchRefresh 异步分批刷新所有token
-// 每个token刷新之间有间隔，避免短时间内发起过多请求
-func (tm *TokenManager) asyncBatchRefresh() {
-	defer func() {
-		tm.mutex.Lock()
-		tm.refreshing = false
-		tm.mutex.Unlock()
-	}()
-
-	logger.Debug("开始异步分批刷新token缓存")
-
-	// 获取配置快照（避免长时间持有锁）
-	tm.mutex.RLock()
-	configs := make([]AuthConfig, len(tm.configs))
-	copy(configs, tm.configs)
-	tm.mutex.RUnlock()
-
-	// 分批刷新，每个token之间间隔500ms
-	const refreshInterval = 500 * time.Millisecond
-
-	for i, cfg := range configs {
-		if cfg.Disabled {
-			continue
-		}
-
-		// 刷新单个token
-		tm.refreshSingleTokenAsync(i, cfg)
-
-		// 如果不是最后一个，等待间隔
-		if i < len(configs)-1 {
-			time.Sleep(refreshInterval)
-		}
+	cfg := tm.configs[index]
+	if cfg.Disabled {
+		return
 	}
 
-	logger.Debug("异步分批刷新token缓存完成",
-		logger.Int("total_configs", len(configs)))
+	// 标记为正在刷新
+	tm.refreshing[cacheKey] = true
+
+	// 异步刷新
+	go tm.refreshSingleTokenAsync(index, cfg)
+
+	logger.Debug("触发单个token异步刷新",
+		logger.String("cache_key", cacheKey),
+		logger.Int("index", index))
 }
 
 // refreshSingleTokenAsync 异步刷新单个token并更新缓存
 func (tm *TokenManager) refreshSingleTokenAsync(index int, cfg AuthConfig) {
+	cacheKey := fmt.Sprintf(config.TokenCacheKeyFormat, index)
+
+	// 确保完成后清除刷新标记
+	defer func() {
+		tm.mutex.Lock()
+		delete(tm.refreshing, cacheKey)
+		tm.mutex.Unlock()
+	}()
+
 	// 刷新token
 	token, err := tm.refreshSingleToken(cfg)
 	if err != nil {
@@ -273,8 +245,6 @@ func (tm *TokenManager) refreshSingleTokenAsync(index int, cfg AuthConfig) {
 	}
 
 	// 更新缓存（需要加锁）
-	cacheKey := fmt.Sprintf(config.TokenCacheKeyFormat, index)
-
 	tm.mutex.Lock()
 	tm.cache.tokens[cacheKey] = &CachedToken{
 		Token:     token,
