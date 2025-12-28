@@ -487,12 +487,12 @@ func maskEmail(email string) string {
 	return maskedUsername + "@" + maskedDomain
 }
 
-// handleTokenPoolAPI 处理Token池API请求 - 恢复多token显示
+// handleTokenPoolAPI 处理Token池API请求 - 只读取缓存，不触发刷新
 func handleTokenPoolAPI(c *gin.Context, authService *auth.AuthService) {
 	var tokenList []any
 	var activeCount int
 
-	// 从 authService 获取配置信息（支持动态添加的配置）
+	// 从 authService 获取配置信息
 	configs := authService.GetConfigs()
 
 	if len(configs) == 0 {
@@ -508,6 +508,9 @@ func handleTokenPoolAPI(c *gin.Context, authService *auth.AuthService) {
 		})
 		return
 	}
+
+	// 获取所有 Token 的缓存状态（只读，不触发刷新）
+	cacheStatuses := authService.GetAllCacheStatus()
 
 	// 遍历所有配置
 	for i, authConfig := range configs {
@@ -528,50 +531,51 @@ func handleTokenPoolAPI(c *gin.Context, authService *auth.AuthService) {
 			continue
 		}
 
-		// 尝试获取token信息
-		tokenInfo, err := refreshSingleTokenByConfig(authConfig)
-		if err != nil {
+		// 从缓存状态中获取信息
+		var cacheStatus auth.TokenCacheStatus
+		if i < len(cacheStatuses) {
+			cacheStatus = cacheStatuses[i]
+		}
+
+		// 如果没有缓存，显示未初始化状态
+		if !cacheStatus.Cached {
 			tokenData := map[string]any{
 				"index":           i,
-				"user_email":      "获取失败",
+				"user_email":      "未初始化",
 				"token_preview":   createTokenPreview(authConfig.RefreshToken),
 				"auth_type":       strings.ToLower(authConfig.AuthType),
 				"remaining_usage": 0,
-				"expires_at":      time.Now().Add(time.Hour).Format(time.RFC3339),
+				"expires_at":      time.Now().Format(time.RFC3339),
 				"last_used":       "未知",
-				"status":          "error",
-				"error":           err.Error(),
+				"status":          "pending",
+				"error":           "Token 尚未初始化，请点击刷新按钮或等待首次 API 请求",
 			}
 			tokenList = append(tokenList, tokenData)
 			continue
 		}
 
-		// 检查使用限制
-		var usageInfo *types.UsageLimits
-		var available float64 // 默认值 (浮点数)
+		// 从缓存中获取信息
+		tokenInfo := cacheStatus.Token
+		usageInfo := cacheStatus.UsageInfo
+		available := cacheStatus.Available
+
+		// 提取用户邮箱
 		var userEmail = "未知用户"
-
-		checker := auth.NewUsageLimitsChecker()
-		if usage, checkErr := checker.CheckUsageLimits(tokenInfo); checkErr == nil {
-			usageInfo = usage
-			available = auth.CalculateAvailableCount(usage)
-
-			// 提取用户邮箱
-			if usage.UserInfo.Email != "" {
-				userEmail = usage.UserInfo.Email
-			}
+		if usageInfo != nil && usageInfo.UserInfo.Email != "" {
+			userEmail = usageInfo.UserInfo.Email
 		}
 
 		// 构建token数据
 		tokenData := map[string]any{
 			"index":           i,
-			"user_email":      maskEmail(userEmail), // 对邮箱进行脱敏处理
+			"user_email":      maskEmail(userEmail),
 			"token_preview":   createTokenPreview(tokenInfo.AccessToken),
 			"auth_type":       strings.ToLower(authConfig.AuthType),
 			"remaining_usage": available,
 			"expires_at":      tokenInfo.ExpiresAt.Format(time.RFC3339),
-			"last_used":       time.Now().Format(time.RFC3339),
+			"last_used":       cacheStatus.LastUsed.Format(time.RFC3339),
 			"status":          "active",
+			"cached_at":       cacheStatus.CachedAt.Format(time.RFC3339),
 		}
 
 		// 添加使用限制详细信息 (基于CREDIT资源类型)
@@ -592,8 +596,8 @@ func handleTokenPoolAPI(c *gin.Context, authService *auth.AuthService) {
 					}
 
 					tokenData["usage_limits"] = map[string]any{
-						"total_limit":   totalLimit, // 保留浮点精度
-						"current_usage": totalUsed,  // 保留浮点精度
+						"total_limit":   totalLimit,
+						"current_usage": totalUsed,
 						"is_exceeded":   available <= 0,
 					}
 					break
@@ -601,8 +605,10 @@ func handleTokenPoolAPI(c *gin.Context, authService *auth.AuthService) {
 			}
 		}
 
-		// 如果token不可用，标记状态
-		if available <= 0 {
+		// 判断状态
+		if time.Now().After(tokenInfo.ExpiresAt) {
+			tokenData["status"] = "expired"
+		} else if available <= 0 {
 			tokenData["status"] = "exhausted"
 		} else {
 			activeCount++

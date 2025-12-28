@@ -151,9 +151,10 @@ class TokenDashboard {
                <div class="error-hint">${errorMsg}</div>`
             : `<span class="status-badge ${statusClass}">${statusText}</span>`;
 
-        // 判断是否需要显示刷新按钮（失效状态：错误、过期、耗尽）
+        // 判断是否需要显示刷新按钮（失效状态：错误、过期、耗尽、未初始化）
         const needsRefresh = token.error ||
             token.status === 'error' ||
+            token.status === 'pending' ||
             new Date(token.expires_at) < new Date() ||
             (token.remaining_usage || 0) === 0;
 
@@ -527,6 +528,9 @@ class TokenDashboard {
         if (token.status === 'disabled') {
             return 'status-disabled';
         }
+        if (token.status === 'pending') {
+            return 'status-pending';
+        }
         if (new Date(token.expires_at) < new Date()) {
             return 'status-expired';
         }
@@ -543,6 +547,9 @@ class TokenDashboard {
         }
         if (token.status === 'disabled') {
             return '已禁用';
+        }
+        if (token.status === 'pending') {
+            return '未初始化';
         }
         if (new Date(token.expires_at) < new Date()) {
             return '已过期';

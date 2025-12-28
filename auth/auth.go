@@ -173,3 +173,11 @@ func (as *AuthService) RefreshToken(index int) error {
 	}
 	return as.tokenManager.RefreshSingleTokenByIndex(index)
 }
+
+// GetAllCacheStatus 获取所有 Token 的缓存状态（只读，不触发刷新）
+func (as *AuthService) GetAllCacheStatus() []TokenCacheStatus {
+	if as.tokenManager == nil {
+		return []TokenCacheStatus{}
+	}
+	return as.tokenManager.GetAllCacheStatus()
+}

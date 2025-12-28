@@ -272,6 +272,47 @@ func (ct *CachedToken) IsUsable() bool {
 	return ct.Available > 0
 }
 
+// TokenCacheStatus 缓存状态信息（用于 Dashboard 显示）
+type TokenCacheStatus struct {
+	Index     int
+	Cached    bool                // 是否有缓存
+	Token     types.TokenInfo     // Token 信息
+	UsageInfo *types.UsageLimits  // 使用限制信息
+	Available float64             // 可用次数
+	CachedAt  time.Time           // 缓存时间
+	LastUsed  time.Time           // 最后使用时间
+	Error     string              // 错误信息（如果有）
+}
+
+// GetAllCacheStatus 获取所有 Token 的缓存状态（只读，不触发刷新）
+func (tm *TokenManager) GetAllCacheStatus() []TokenCacheStatus {
+	tm.mutex.RLock()
+	defer tm.mutex.RUnlock()
+
+	result := make([]TokenCacheStatus, len(tm.configs))
+
+	for i := range tm.configs {
+		cacheKey := fmt.Sprintf(config.TokenCacheKeyFormat, i)
+		status := TokenCacheStatus{
+			Index:  i,
+			Cached: false,
+		}
+
+		if cached, exists := tm.cache.tokens[cacheKey]; exists {
+			status.Cached = true
+			status.Token = cached.Token
+			status.UsageInfo = cached.UsageInfo
+			status.Available = cached.Available
+			status.CachedAt = cached.CachedAt
+			status.LastUsed = cached.LastUsed
+		}
+
+		result[i] = status
+	}
+
+	return result
+}
+
 // *** 已删除 set 和 updateLastUsed 方法 ***
 // SimpleTokenCache 现在是纯数据结构，所有访问由 TokenManager.mutex 保护
 // set 操作：直接通过 tm.cache.tokens[key] = value 完成
