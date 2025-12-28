@@ -155,7 +155,7 @@ func (m *ClientTokenManager) GetAllStats() []ClientTokenStats {
 	result := make([]ClientTokenStats, 0, len(m.tokens))
 	for _, t := range m.tokens {
 		stat := ClientTokenStats{
-			Token:     maskToken(t.Token),
+			Token:     t.Token, // 返回完整令牌，前端负责显示/隐藏
 			Name:      t.Name,
 			Disabled:  t.Disabled,
 			CreatedAt: t.CreatedAt,
@@ -275,12 +275,4 @@ func (m *ClientTokenManager) GetTokenCount() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return len(m.tokens)
-}
-
-// maskToken 脱敏令牌显示
-func maskToken(token string) string {
-	if len(token) <= 8 {
-		return "****"
-	}
-	return token[:4] + "****" + token[len(token)-4:]
 }
