@@ -432,3 +432,27 @@ func (tm *TokenManager) RemoveConfig(index int) error {
 
 	return nil
 }
+
+// RefreshSingleTokenByIndex 刷新指定索引的 Token（公开方法，用于手动刷新）
+func (tm *TokenManager) RefreshSingleTokenByIndex(index int) error {
+	tm.mutex.RLock()
+	if index < 0 || index >= len(tm.configs) {
+		tm.mutex.RUnlock()
+		return fmt.Errorf("无效的索引: %d", index)
+	}
+	cfg := tm.configs[index]
+	tm.mutex.RUnlock()
+
+	if cfg.Disabled {
+		return fmt.Errorf("该配置已禁用")
+	}
+
+	// 异步刷新
+	go tm.refreshSingleTokenAsync(index, cfg)
+
+	logger.Info("已触发单个Token刷新",
+		logger.Int("index", index),
+		logger.String("auth_type", cfg.AuthType))
+
+	return nil
+}

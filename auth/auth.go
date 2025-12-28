@@ -165,3 +165,11 @@ func (as *AuthService) GetConfigCount() int {
 func (as *AuthService) HasAvailableToken() bool {
 	return len(as.configs) > 0
 }
+
+// RefreshToken 刷新指定索引的 Token
+func (as *AuthService) RefreshToken(index int) error {
+	if as.tokenManager == nil {
+		return fmt.Errorf("token管理器未初始化")
+	}
+	return as.tokenManager.RefreshSingleTokenByIndex(index)
+}

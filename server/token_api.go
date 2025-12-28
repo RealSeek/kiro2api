@@ -44,6 +44,11 @@ func registerTokenManagementRoutes(r *gin.Engine, authService *auth.AuthService,
 	tokenGroup.DELETE("/:index", func(c *gin.Context) {
 		handleDeleteToken(c, authService)
 	})
+
+	// 刷新单个 Token
+	tokenGroup.POST("/:index/refresh", func(c *gin.Context) {
+		handleRefreshToken(c, authService)
+	})
 }
 
 // handleAddToken 处理添加 Token 请求
@@ -154,5 +159,38 @@ func handleDeleteToken(c *gin.Context, authService *auth.AuthService) {
 		Success: true,
 		Message: "Token 删除成功",
 		Count:   authService.GetConfigCount(),
+	})
+}
+
+// handleRefreshToken 处理刷新单个 Token 请求
+func handleRefreshToken(c *gin.Context, authService *auth.AuthService) {
+	indexStr := c.Param("index")
+	index, err := strconv.Atoi(indexStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, TokenAPIResponse{
+			Success: false,
+			Message: "无效的索引: " + indexStr,
+		})
+		return
+	}
+
+	// 刷新 Token
+	if err := authService.RefreshToken(index); err != nil {
+		logger.Warn("刷新Token失败",
+			logger.Int("index", index),
+			logger.Err(err))
+		c.JSON(http.StatusBadRequest, TokenAPIResponse{
+			Success: false,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	logger.Info("已触发Token刷新",
+		logger.Int("index", index))
+
+	c.JSON(http.StatusOK, TokenAPIResponse{
+		Success: true,
+		Message: "Token 刷新已触发，请稍后刷新页面查看状态",
 	})
 }

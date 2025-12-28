@@ -151,6 +151,16 @@ class TokenDashboard {
                <div class="error-hint">${errorMsg}</div>`
             : `<span class="status-badge ${statusClass}">${statusText}</span>`;
 
+        // 判断是否需要显示刷新按钮（失效状态：错误、过期、耗尽）
+        const needsRefresh = token.error ||
+            token.status === 'error' ||
+            new Date(token.expires_at) < new Date() ||
+            (token.remaining_usage || 0) === 0;
+
+        const refreshButton = needsRefresh
+            ? `<button class="btn-refresh-small" onclick="dashboard.refreshSingleToken(${index})" title="刷新此Token">刷新</button>`
+            : '';
+
         return `
             <tr class="${token.error ? 'row-error' : ''}">
                 <td>${token.user_email || 'unknown'}</td>
@@ -161,6 +171,7 @@ class TokenDashboard {
                 <td>${this.formatDateTime(token.last_used)}</td>
                 <td class="status-cell">${statusBadge}</td>
                 <td>
+                    ${refreshButton}
                     <button class="btn-delete-small" onclick="dashboard.showDeleteConfirmModal(${index})">删除</button>
                 </td>
             </tr>
@@ -405,6 +416,33 @@ class TokenDashboard {
     }
 
     // ==================== 删除账号功能 ====================
+
+    /**
+     * 刷新单个Token
+     */
+    async refreshSingleToken(index) {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/tokens/${index}/refresh`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-Token': this.getCsrfToken()
+                }
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.showToast('刷新已触发，请稍后刷新页面查看状态');
+                // 3秒后自动刷新列表
+                setTimeout(() => this.refreshTokens(), 3000);
+            } else {
+                this.showToast(result.message || '刷新失败', 'error');
+            }
+        } catch (error) {
+            console.error('刷新Token失败:', error);
+            this.showToast('网络错误: ' + error.message, 'error');
+        }
+    }
 
     /**
      * 显示删除确认模态框

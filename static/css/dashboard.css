@@ -332,6 +332,23 @@ tr:hover {
     background: rgba(244, 67, 54, 0.9);
 }
 
+/* 刷新按钮 */
+.btn-refresh-small {
+    background: rgba(33, 150, 243, 0.6);
+    border: none;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+    margin-right: 6px;
+}
+
+.btn-refresh-small:hover {
+    background: rgba(33, 150, 243, 0.9);
+}
+
 /* 模态框样式 */
 .modal {
     display: none;
