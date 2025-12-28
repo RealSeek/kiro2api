@@ -46,12 +46,12 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 	// 创建会话管理器（30分钟空闲超时，24小时绝对超时）
 	sessionManager := NewSessionManager(30*time.Minute, 24*time.Hour)
 
-	// 创建认证处理器
-	authHandlers := NewAuthHandlers(sessionManager, adminUser, adminPass, 30*time.Minute)
-
 	// 判断是否使用 Secure cookie
 	// 默认 false，仅当显式设置 SECURE_COOKIE=true 且使用 HTTPS 时启用
 	secureCookie := os.Getenv("SECURE_COOKIE") == "true"
+
+	// 创建认证处理器
+	authHandlers := NewAuthHandlers(sessionManager, adminUser, adminPass, 30*time.Minute, secureCookie)
 
 	r := gin.New()
 

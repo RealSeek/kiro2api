@@ -28,10 +28,7 @@ type AuthHandlers struct {
 }
 
 // NewAuthHandlers 创建认证处理器
-func NewAuthHandlers(manager *SessionManager, adminUser, adminPass string, idleTimeout time.Duration) *AuthHandlers {
-	// 根据 gin 模式判断是否使用 Secure cookie
-	secureCookie := gin.Mode() == gin.ReleaseMode
-
+func NewAuthHandlers(manager *SessionManager, adminUser, adminPass string, idleTimeout time.Duration, secureCookie bool) *AuthHandlers {
 	return &AuthHandlers{
 		manager:      manager,
 		adminUser:    adminUser,
