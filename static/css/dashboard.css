@@ -238,15 +238,6 @@ tr:hover {
     font-size: 0.85rem;
 }
 
-.token-clickable {
-    cursor: pointer;
-    transition: background 0.2s ease;
-}
-
-.token-clickable:hover {
-    background: rgba(255,255,255,0.2);
-}
-
 .status-badge {
     padding: 4px 12px;
     border-radius: 12px;
