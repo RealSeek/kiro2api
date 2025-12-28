@@ -9,20 +9,26 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔐 KIRO Token Dashboard</h1>
+            <h1>KIRO Token Dashboard</h1>
             <p>实时监控Token池状态和使用情况</p>
         </div>
-        
+
         <div class="controls">
             <button class="refresh-btn">
-                🔄 手动刷新
+                刷新
+            </button>
+            <button class="add-btn" onclick="dashboard.showAddTokenModal()">
+                + 添加账号
+            </button>
+            <button class="logout-btn" onclick="dashboard.logout()" id="logoutBtn" style="display: none;">
+                退出登录
             </button>
             <div class="auto-refresh">
                 <span>自动刷新</span>
                 <div class="switch"></div>
             </div>
         </div>
-        
+
         <div class="status-bar">
             <div class="status-item">
                 <span class="status-label">总Token数</span>
@@ -37,7 +43,7 @@
                 <span class="status-value" id="lastUpdate">-</span>
             </div>
         </div>
-        
+
         <div class="main-card">
             <div class="table-container">
                 <table>
@@ -50,17 +56,99 @@
                             <th>过期时间</th>
                             <th>最后使用</th>
                             <th>状态</th>
+                            <th>操作</th>
                         </tr>
                     </thead>
                     <tbody id="tokenTableBody">
                         <tr>
-                            <td colspan="7" class="loading">
+                            <td colspan="8" class="loading">
                                 <div class="spinner"></div>
                                 正在加载Token数据...
                             </td>
                         </tr>
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加账号模态框 -->
+    <div id="addTokenModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>添加新账号</h2>
+                <span class="close-btn" onclick="dashboard.hideAddTokenModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <!-- Tab 切换 -->
+                <div class="tab-container">
+                    <button class="tab-btn active" onclick="dashboard.switchTab('manual')">手动输入</button>
+                    <button class="tab-btn" onclick="dashboard.switchTab('json')">JSON 导入</button>
+                </div>
+
+                <!-- 手动输入面板 -->
+                <div id="manualPanel" class="tab-panel active">
+                    <div class="form-group">
+                        <label for="authType">认证方式</label>
+                        <select id="authType" onchange="dashboard.toggleIdcFields()">
+                            <option value="Social">Social (个人账号)</option>
+                            <option value="IdC">IdC (企业账号)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="refreshToken">Refresh Token *</label>
+                        <textarea id="refreshToken" placeholder="输入 Refresh Token" rows="3"></textarea>
+                        <small>通常位于 ~/.aws/sso/cache/ 目录下的JSON文件中</small>
+                    </div>
+                    <div id="idcFields" class="idc-fields" style="display: none;">
+                        <div class="form-group">
+                            <label for="clientId">Client ID *</label>
+                            <input type="text" id="clientId" placeholder="输入 Client ID">
+                        </div>
+                        <div class="form-group">
+                            <label for="clientSecret">Client Secret *</label>
+                            <textarea id="clientSecret" placeholder="输入 Client Secret" rows="2"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- JSON 导入面板 -->
+                <div id="jsonPanel" class="tab-panel">
+                    <div class="form-group">
+                        <label for="jsonInput">粘贴 JSON 配置</label>
+                        <textarea id="jsonInput" placeholder='{
+  "auth": "IdC",
+  "clientId": "xxx",
+  "clientSecret": "xxx",
+  "refreshToken": "xxx"
+}' rows="10"></textarea>
+                        <small>支持包含 auth, refreshToken, clientId, clientSecret 字段的 JSON</small>
+                    </div>
+                    <button class="btn-parse" onclick="dashboard.parseJsonInput()">解析并填充</button>
+                </div>
+
+                <div id="addTokenError" class="form-error" style="display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="dashboard.hideAddTokenModal()">取消</button>
+                <button class="btn-confirm" onclick="dashboard.addToken()">添加</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 确认删除模态框 -->
+    <div id="deleteConfirmModal" class="modal">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>确认删除</h2>
+                <span class="close-btn" onclick="dashboard.hideDeleteConfirmModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>确定要删除此账号吗？此操作不可恢复。</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="dashboard.hideDeleteConfirmModal()">取消</button>
+                <button class="btn-danger" onclick="dashboard.confirmDeleteToken()">删除</button>
             </div>
         </div>
     </div>

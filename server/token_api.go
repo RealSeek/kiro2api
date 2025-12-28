@@ -28,14 +28,20 @@ type TokenAPIResponse struct {
 }
 
 // registerTokenManagementRoutes 注册 Token 管理路由
-func registerTokenManagementRoutes(r *gin.Engine, authService *auth.AuthService) {
+func registerTokenManagementRoutes(r *gin.Engine, authService *auth.AuthService, requireAuth bool) {
+	// 创建路由组
+	tokenGroup := r.Group("/api/tokens")
+	if requireAuth {
+		tokenGroup.Use(AdminAPIAuthGuard())
+	}
+
 	// 添加 Token
-	r.POST("/api/tokens", func(c *gin.Context) {
+	tokenGroup.POST("", func(c *gin.Context) {
 		handleAddToken(c, authService)
 	})
 
 	// 删除 Token
-	r.DELETE("/api/tokens/:index", func(c *gin.Context) {
+	tokenGroup.DELETE("/:index", func(c *gin.Context) {
 		handleDeleteToken(c, authService)
 	})
 }

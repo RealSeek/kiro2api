@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"kiro2api/auth"
 	"kiro2api/config"
@@ -27,6 +28,30 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 	}
 	gin.SetMode(ginMode)
 
+	// 获取管理员凭据
+	adminUser := os.Getenv("ADMIN_USERNAME")
+	adminPass := os.Getenv("ADMIN_PASSWORD")
+	if adminUser == "" {
+		adminUser = "admin"
+	}
+
+	// 检查是否启用 Dashboard 认证
+	dashboardAuthEnabled := adminPass != ""
+	if dashboardAuthEnabled {
+		logger.Info("Dashboard 认证已启用")
+	} else {
+		logger.Warn("Dashboard 认证未启用，请设置 ADMIN_PASSWORD 环境变量以保护管理面板")
+	}
+
+	// 创建会话管理器（30分钟空闲超时，24小时绝对超时）
+	sessionManager := NewSessionManager(30*time.Minute, 24*time.Hour)
+
+	// 创建认证处理器
+	authHandlers := NewAuthHandlers(sessionManager, adminUser, adminPass, 30*time.Minute)
+
+	// 判断是否使用 Secure cookie
+	secureCookie := gin.Mode() == gin.ReleaseMode
+
 	r := gin.New()
 
 	// 添加中间件
@@ -35,22 +60,45 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 	// 注入请求ID，便于日志追踪
 	r.Use(RequestIDMiddleware())
 	r.Use(corsMiddleware())
+	// 会话中间件（解析会话cookie）
+	r.Use(SessionMiddleware(sessionManager))
+	// CSRF 保护（跳过 /v1 API）
+	if dashboardAuthEnabled {
+		r.Use(CSRFMiddleware(secureCookie))
+	}
 	// 只对 /v1 开头的端点进行认证
 	r.Use(PathBasedAuthMiddleware(authToken, []string{"/v1"}))
 
 	// 静态资源服务 - 前后端完全分离
 	r.Static("/static", "./static")
+
+	// Dashboard 首页（需要认证）
 	r.GET("/", func(c *gin.Context) {
+		if dashboardAuthEnabled {
+			if _, exists := c.Get(sessionUserKey); !exists {
+				c.Redirect(http.StatusFound, "/static/login.html")
+				return
+			}
+		}
 		c.File("./static/index.html")
 	})
 
-	// API端点 - 纯数据服务
-	r.GET("/api/tokens", func(c *gin.Context) {
+	// 认证相关 API
+	r.POST("/api/login", authHandlers.HandleLogin)
+	r.POST("/api/logout", authHandlers.HandleLogout)
+	r.GET("/api/session", authHandlers.HandleSessionCheck)
+
+	// API端点 - 纯数据服务（需要认证保护）
+	apiGroup := r.Group("/api")
+	if dashboardAuthEnabled {
+		apiGroup.Use(AdminAPIAuthGuard())
+	}
+	apiGroup.GET("/tokens", func(c *gin.Context) {
 		handleTokenPoolAPI(c, authService)
 	})
 
 	// Token 管理 API（动态添加/删除）
-	registerTokenManagementRoutes(r, authService)
+	registerTokenManagementRoutes(r, authService, dashboardAuthEnabled)
 
 	// GET /v1/models 端点
 	r.GET("/v1/models", func(c *gin.Context) {
@@ -232,9 +280,15 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 		logger.String("port", port),
 		logger.String("auth_token", "***"))
 	logger.Info("AuthToken 验证已启用")
+	if dashboardAuthEnabled {
+		logger.Info("Dashboard 认证已启用，用户名: " + adminUser)
+	}
 	logger.Info("可用端点:")
-	logger.Info("  GET  /                          - 重定向到静态Dashboard")
+	logger.Info("  GET  /                          - Dashboard (需要登录)")
 	logger.Info("  GET  /static/*                  - 静态资源服务")
+	logger.Info("  POST /api/login                 - 登录")
+	logger.Info("  POST /api/logout                - 登出")
+	logger.Info("  GET  /api/session               - 会话状态")
 	logger.Info("  GET  /api/tokens                - Token池状态API")
 	logger.Info("  POST /api/tokens                - 添加Token")
 	logger.Info("  DELETE /api/tokens/:index       - 删除Token")

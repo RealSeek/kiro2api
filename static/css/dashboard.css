@@ -43,7 +43,7 @@ body {
     margin-bottom: 30px;
 }
 
-.refresh-btn {
+.refresh-btn, .add-btn, .logout-btn {
     background: rgba(255,255,255,0.2);
     border: 1px solid rgba(255,255,255,0.3);
     color: white;
@@ -55,14 +55,32 @@ body {
     backdrop-filter: blur(10px);
 }
 
-.refresh-btn:hover {
+.refresh-btn:hover, .add-btn:hover, .logout-btn:hover {
     background: rgba(255,255,255,0.3);
     transform: translateY(-2px);
     box-shadow: 0 5px 15px rgba(0,0,0,0.2);
 }
 
-.refresh-btn:active {
+.refresh-btn:active, .add-btn:active, .logout-btn:active {
     transform: translateY(0);
+}
+
+.add-btn {
+    background: rgba(76, 175, 80, 0.6);
+    border-color: rgba(76, 175, 80, 0.8);
+}
+
+.add-btn:hover {
+    background: rgba(76, 175, 80, 0.8);
+}
+
+.logout-btn {
+    background: rgba(244, 67, 54, 0.5);
+    border-color: rgba(244, 67, 54, 0.7);
+}
+
+.logout-btn:hover {
+    background: rgba(244, 67, 54, 0.7);
 }
 
 .auto-refresh {
@@ -208,6 +226,45 @@ tr:hover {
     color: white;
 }
 
+.status-error {
+    background: rgba(211, 47, 47, 0.9);
+    color: white;
+    animation: pulse-error 2s infinite;
+}
+
+.status-disabled {
+    background: rgba(97, 97, 97, 0.8);
+    color: white;
+}
+
+@keyframes pulse-error {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+/* 错误行高亮 */
+.row-error {
+    background: rgba(211, 47, 47, 0.1) !important;
+}
+
+.row-error:hover {
+    background: rgba(211, 47, 47, 0.15) !important;
+}
+
+/* 状态单元格 */
+.status-cell {
+    position: relative;
+}
+
+/* 错误提示信息 */
+.error-hint {
+    font-size: 0.75rem;
+    color: #ff6b6b;
+    margin-top: 4px;
+    max-width: 200px;
+    line-height: 1.3;
+}
+
 .loading {
     display: flex;
     justify-content: center;
@@ -241,28 +298,359 @@ tr:hover {
     text-align: center;
 }
 
+/* 空状态样式 */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: rgba(255,255,255,0.7);
+}
+
+.empty-icon {
+    font-size: 4rem;
+    margin-bottom: 15px;
+}
+
+.empty-hint {
+    font-size: 0.9rem;
+    opacity: 0.7;
+    margin-top: 10px;
+}
+
+/* 删除按钮 */
+.btn-delete-small {
+    background: rgba(244, 67, 54, 0.6);
+    border: none;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+}
+
+.btn-delete-small:hover {
+    background: rgba(244, 67, 54, 0.9);
+}
+
+/* 模态框样式 */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(5px);
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    animation: modalIn 0.3s ease;
+}
+
+.modal-small {
+    max-width: 400px;
+}
+
+@keyframes modalIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 25px;
+    border-bottom: 1px solid #eee;
+}
+
+.modal-header h2 {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: #333;
+}
+
+.close-btn {
+    font-size: 1.8rem;
+    color: #999;
+    cursor: pointer;
+    line-height: 1;
+    transition: color 0.2s;
+}
+
+.close-btn:hover {
+    color: #333;
+}
+
+.modal-body {
+    padding: 25px;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 15px 25px;
+    border-top: 1px solid #eee;
+    background: #f9f9f9;
+    border-radius: 0 0 16px 16px;
+}
+
+/* 表单样式 */
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: #333;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 12px 15px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-group small {
+    display: block;
+    margin-top: 6px;
+    color: #999;
+    font-size: 0.85rem;
+}
+
+.form-group textarea {
+    resize: vertical;
+    font-family: 'Courier New', monospace;
+}
+
+.idc-fields {
+    background: #f5f5f5;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 10px;
+}
+
+/* Tab 切换样式 */
+.tab-container {
+    display: flex;
+    gap: 0;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 12px 20px;
+    border: none;
+    background: transparent;
+    color: #666;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+}
+
+.tab-btn:hover {
+    color: #667eea;
+    background: rgba(102, 126, 234, 0.05);
+}
+
+.tab-btn.active {
+    color: #667eea;
+    border-bottom-color: #667eea;
+    font-weight: 500;
+}
+
+.tab-panel {
+    display: none;
+}
+
+.tab-panel.active {
+    display: block;
+}
+
+/* JSON 输入面板 */
+#jsonInput {
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    resize: vertical;
+}
+
+.btn-parse {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+    width: 100%;
+    margin-top: 10px;
+}
+
+.btn-parse:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.form-error {
+    background: #fff5f5;
+    border: 1px solid #ffcdd2;
+    color: #c62828;
+    padding: 12px 15px;
+    border-radius: 8px;
+    margin-top: 15px;
+    font-size: 0.9rem;
+}
+
+/* 按钮样式 */
+.btn-cancel {
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    color: #666;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.2s;
+}
+
+.btn-cancel:hover {
+    background: #eee;
+}
+
+.btn-confirm {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    color: white;
+    padding: 10px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-confirm:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.btn-danger {
+    background: #f44336;
+    border: none;
+    color: white;
+    padding: 10px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-danger:hover {
+    background: #d32f2f;
+}
+
+/* Toast 提示 */
+.toast {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #333;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    opacity: 0;
+    transition: all 0.3s ease;
+    z-index: 2000;
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.toast-success {
+    background: #4caf50;
+}
+
+.toast-error {
+    background: #f44336;
+}
+
+/* 响应式设计 */
 @media (max-width: 768px) {
     .header h1 {
         font-size: 2rem;
     }
-    
+
     .controls {
         flex-direction: column;
         gap: 15px;
     }
-    
+
     .status-bar {
         flex-direction: column;
         gap: 15px;
     }
-    
+
     .status-item {
         flex-direction: row;
         gap: 10px;
     }
-    
+
     th, td {
         padding: 10px 15px;
         font-size: 0.9rem;
+    }
+
+    .modal-content {
+        width: 95%;
+        margin: 10px;
+    }
+
+    .modal-footer {
+        flex-direction: column;
+    }
+
+    .modal-footer button {
+        width: 100%;
     }
 }
