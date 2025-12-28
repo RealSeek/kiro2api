@@ -50,7 +50,8 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 	authHandlers := NewAuthHandlers(sessionManager, adminUser, adminPass, 30*time.Minute)
 
 	// 判断是否使用 Secure cookie
-	secureCookie := gin.Mode() == gin.ReleaseMode
+	// 默认 false，仅当显式设置 SECURE_COOKIE=true 且使用 HTTPS 时启用
+	secureCookie := os.Getenv("SECURE_COOKIE") == "true"
 
 	r := gin.New()
 
