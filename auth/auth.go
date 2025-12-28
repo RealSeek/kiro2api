@@ -13,6 +13,7 @@ type AuthService struct {
 }
 
 // NewAuthService 创建新的认证服务（推荐使用此方法而不是全局函数）
+// 支持空配置启动，允许通过 API 动态添加账号
 func NewAuthService() (*AuthService, error) {
 	logger.Info("创建AuthService实例")
 
@@ -22,8 +23,13 @@ func NewAuthService() (*AuthService, error) {
 		return nil, fmt.Errorf("加载配置失败: %w", err)
 	}
 
+	// 允许空配置启动，后续可通过 API 添加账号
 	if len(configs) == 0 {
-		return nil, fmt.Errorf("未找到有效的token配置")
+		logger.Info("未找到token配置，将使用空配置启动（可通过API添加账号）")
+		return &AuthService{
+			tokenManager: NewTokenManager(configs),
+			configs:      configs,
+		}, nil
 	}
 
 	// 创建token管理器
@@ -67,4 +73,55 @@ func (as *AuthService) GetTokenManager() *TokenManager {
 // GetConfigs 获取认证配置
 func (as *AuthService) GetConfigs() []AuthConfig {
 	return as.configs
+}
+
+// AddConfig 添加新的认证配置
+func (as *AuthService) AddConfig(config AuthConfig) error {
+	if config.RefreshToken == "" {
+		return fmt.Errorf("RefreshToken 不能为空")
+	}
+	if config.AuthType == "" {
+		config.AuthType = AuthMethodSocial
+	}
+	if config.AuthType == AuthMethodIdC {
+		if config.ClientID == "" || config.ClientSecret == "" {
+			return fmt.Errorf("IdC 认证需要 ClientID 和 ClientSecret")
+		}
+	}
+
+	as.configs = append(as.configs, config)
+	as.tokenManager.AddConfig(config)
+
+	logger.Info("添加新的认证配置",
+		logger.String("auth_type", config.AuthType),
+		logger.Int("total_configs", len(as.configs)))
+
+	return nil
+}
+
+// RemoveConfig 根据索引移除配置
+func (as *AuthService) RemoveConfig(index int) error {
+	if index < 0 || index >= len(as.configs) {
+		return fmt.Errorf("无效的索引: %d", index)
+	}
+
+	as.configs = append(as.configs[:index], as.configs[index+1:]...)
+	// 重建 TokenManager 以确保状态一致
+	as.tokenManager = NewTokenManager(as.configs)
+
+	logger.Info("移除认证配置",
+		logger.Int("removed_index", index),
+		logger.Int("remaining_configs", len(as.configs)))
+
+	return nil
+}
+
+// GetConfigCount 返回配置数量
+func (as *AuthService) GetConfigCount() int {
+	return len(as.configs)
+}
+
+// HasAvailableToken 检查是否有可用的 Token
+func (as *AuthService) HasAvailableToken() bool {
+	return len(as.configs) > 0
 }

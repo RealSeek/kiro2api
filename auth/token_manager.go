@@ -298,3 +298,53 @@ func generateConfigOrder(configs []AuthConfig) []string {
 
 	return order
 }
+
+// AddConfig 动态添加新的认证配置
+func (tm *TokenManager) AddConfig(cfg AuthConfig) {
+	tm.mutex.Lock()
+	defer tm.mutex.Unlock()
+
+	// 添加到配置列表
+	tm.configs = append(tm.configs, cfg)
+
+	// 更新配置顺序
+	newIndex := len(tm.configs) - 1
+	cacheKey := fmt.Sprintf(config.TokenCacheKeyFormat, newIndex)
+	tm.configOrder = append(tm.configOrder, cacheKey)
+
+	// 尝试刷新新添加的token
+	if !cfg.Disabled {
+		token, err := tm.refreshSingleToken(cfg)
+		if err != nil {
+			logger.Warn("刷新新添加的token失败",
+				logger.Int("config_index", newIndex),
+				logger.String("auth_type", cfg.AuthType),
+				logger.Err(err))
+			return
+		}
+
+		// 检查使用限制
+		var usageInfo *types.UsageLimits
+		var available float64
+
+		checker := NewUsageLimitsChecker()
+		if usage, checkErr := checker.CheckUsageLimits(token); checkErr == nil {
+			usageInfo = usage
+			available = CalculateAvailableCount(usage)
+		} else {
+			logger.Warn("检查新token使用限制失败", logger.Err(checkErr))
+		}
+
+		// 添加到缓存
+		tm.cache.tokens[cacheKey] = &CachedToken{
+			Token:     token,
+			UsageInfo: usageInfo,
+			CachedAt:  time.Now(),
+			Available: available,
+		}
+
+		logger.Info("新token已添加并缓存",
+			logger.String("cache_key", cacheKey),
+			logger.Float64("available", available))
+	}
+}

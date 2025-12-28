@@ -47,6 +47,9 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 	// API端点 - 纯数据服务
 	r.GET("/api/tokens", handleTokenPoolAPI)
 
+	// Token 管理 API（动态添加/删除）
+	registerTokenManagementRoutes(r, authService)
+
 	// GET /v1/models 端点
 	r.GET("/v1/models", func(c *gin.Context) {
 		// 构建模型列表
@@ -231,6 +234,8 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 	logger.Info("  GET  /                          - 重定向到静态Dashboard")
 	logger.Info("  GET  /static/*                  - 静态资源服务")
 	logger.Info("  GET  /api/tokens                - Token池状态API")
+	logger.Info("  POST /api/tokens                - 添加Token")
+	logger.Info("  DELETE /api/tokens/:index       - 删除Token")
 	logger.Info("  GET  /v1/models                 - 模型列表")
 	logger.Info("  POST /v1/messages               - Anthropic API代理")
 	logger.Info("  POST /v1/messages/count_tokens  - Token计数接口")
