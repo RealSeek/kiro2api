@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -48,6 +49,11 @@ func registerTokenManagementRoutes(r *gin.Engine, authService *auth.AuthService,
 	// 刷新单个 Token
 	tokenGroup.POST("/:index/refresh", func(c *gin.Context) {
 		handleRefreshToken(c, authService)
+	})
+
+	// 刷新所有 Token
+	tokenGroup.POST("/refresh-all", func(c *gin.Context) {
+		handleRefreshAllTokens(c, authService)
 	})
 }
 
@@ -192,5 +198,29 @@ func handleRefreshToken(c *gin.Context, authService *auth.AuthService) {
 	c.JSON(http.StatusOK, TokenAPIResponse{
 		Success: true,
 		Message: "Token 刷新已触发，请稍后刷新页面查看状态",
+	})
+}
+
+// handleRefreshAllTokens 处理刷新所有 Token 请求
+func handleRefreshAllTokens(c *gin.Context, authService *auth.AuthService) {
+	count := authService.GetConfigCount()
+	if count == 0 {
+		c.JSON(http.StatusBadRequest, TokenAPIResponse{
+			Success: false,
+			Message: "没有可刷新的 Token",
+		})
+		return
+	}
+
+	// 触发刷新所有 Token
+	authService.RefreshAllTokens()
+
+	logger.Info("已触发刷新所有Token",
+		logger.Int("count", count))
+
+	c.JSON(http.StatusOK, TokenAPIResponse{
+		Success: true,
+		Message: fmt.Sprintf("已触发刷新 %d 个 Token，请稍后刷新页面查看状态", count),
+		Count:   count,
 	})
 }

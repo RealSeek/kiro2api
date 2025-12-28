@@ -14,8 +14,11 @@
         </div>
 
         <div class="controls">
-            <button class="refresh-btn">
-                刷新
+            <button class="refresh-btn" onclick="dashboard.refreshTokens()">
+                刷新状态
+            </button>
+            <button class="refresh-all-btn" onclick="dashboard.refreshAllTokens()">
+                刷新全部Token
             </button>
             <button class="add-btn" onclick="dashboard.showAddTokenModal()">
                 + 添加账号
@@ -23,10 +26,6 @@
             <button class="logout-btn" onclick="dashboard.logout()" id="logoutBtn" style="display: none;">
                 退出登录
             </button>
-            <div class="auto-refresh">
-                <span>自动刷新</span>
-                <div class="switch"></div>
-            </div>
         </div>
 
         <div class="status-bar">

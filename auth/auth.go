@@ -181,3 +181,11 @@ func (as *AuthService) GetAllCacheStatus() []TokenCacheStatus {
 	}
 	return as.tokenManager.GetAllCacheStatus()
 }
+
+// RefreshAllTokens 刷新所有 Token
+func (as *AuthService) RefreshAllTokens() {
+	if as.tokenManager == nil {
+		return
+	}
+	as.tokenManager.RefreshAllTokens()
+}

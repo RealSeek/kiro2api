@@ -467,3 +467,34 @@ func (tm *TokenManager) RefreshSingleTokenByIndex(index int) error {
 
 	return nil
 }
+
+// RefreshAllTokens 刷新所有 Token（公开方法，用于手动刷新全部）
+// 分批异步刷新，每个 Token 间隔 500ms
+func (tm *TokenManager) RefreshAllTokens() {
+	tm.mutex.RLock()
+	configs := make([]AuthConfig, len(tm.configs))
+	copy(configs, tm.configs)
+	tm.mutex.RUnlock()
+
+	logger.Info("开始刷新所有Token", logger.Int("total", len(configs)))
+
+	// 异步分批刷新
+	go func() {
+		const refreshInterval = 500 * time.Millisecond
+
+		for i, cfg := range configs {
+			if cfg.Disabled {
+				continue
+			}
+
+			tm.refreshSingleTokenAsync(i, cfg)
+
+			// 如果不是最后一个，等待间隔
+			if i < len(configs)-1 {
+				time.Sleep(refreshInterval)
+			}
+		}
+
+		logger.Info("所有Token刷新完成", logger.Int("total", len(configs)))
+	}()
+}

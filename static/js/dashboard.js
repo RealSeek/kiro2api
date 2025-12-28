@@ -7,8 +7,6 @@ let dashboard; // 全局变量，供HTML调用
 
 class TokenDashboard {
     constructor() {
-        this.autoRefreshInterval = null;
-        this.isAutoRefreshEnabled = false;
         this.apiBaseUrl = '/api';
         this.pendingDeleteIndex = null;
 
@@ -19,7 +17,6 @@ class TokenDashboard {
      * 初始化Dashboard
      */
     init() {
-        this.bindEvents();
         this.checkSession(); // 检查会话状态
         this.refreshTokens();
     }
@@ -71,31 +68,6 @@ class TokenDashboard {
             console.error('登出请求失败:', error);
             this.showToast('网络错误', 'error');
         }
-    }
-
-    /**
-     * 绑定事件处理器 (DRY原则)
-     */
-    bindEvents() {
-        // 手动刷新按钮
-        const refreshBtn = document.querySelector('.refresh-btn');
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', () => this.refreshTokens());
-        }
-
-        // 自动刷新开关
-        const switchEl = document.querySelector('.switch');
-        if (switchEl) {
-            switchEl.addEventListener('click', () => this.toggleAutoRefresh());
-        }
-
-        // 点击模态框外部关闭
-        window.addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal')) {
-                this.hideAddTokenModal();
-                this.hideDeleteConfirmModal();
-            }
-        });
     }
 
     /**
@@ -212,37 +184,30 @@ class TokenDashboard {
     }
 
     /**
-     * 切换自动刷新 (ISP原则 - 接口隔离)
+     * 刷新所有 Token（触发后端刷新）
      */
-    toggleAutoRefresh() {
-        const switchEl = document.querySelector('.switch');
+    async refreshAllTokens() {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/tokens/refresh-all`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-Token': this.getCsrfToken()
+                }
+            });
 
-        if (this.isAutoRefreshEnabled) {
-            this.stopAutoRefresh();
-            switchEl.classList.remove('active');
-        } else {
-            this.startAutoRefresh();
-            switchEl.classList.add('active');
+            const result = await response.json();
+
+            if (result.success) {
+                this.showToast(result.message || '已触发刷新所有 Token');
+                // 5秒后自动刷新列表（等待刷新完成）
+                setTimeout(() => this.refreshTokens(), 5000);
+            } else {
+                this.showToast(result.message || '刷新失败', 'error');
+            }
+        } catch (error) {
+            console.error('刷新所有Token失败:', error);
+            this.showToast('网络错误: ' + error.message, 'error');
         }
-    }
-
-    /**
-     * 启动自动刷新
-     */
-    startAutoRefresh() {
-        this.autoRefreshInterval = setInterval(() => this.refreshTokens(), 30000);
-        this.isAutoRefreshEnabled = true;
-    }
-
-    /**
-     * 停止自动刷新
-     */
-    stopAutoRefresh() {
-        if (this.autoRefreshInterval) {
-            clearInterval(this.autoRefreshInterval);
-            this.autoRefreshInterval = null;
-        }
-        this.isAutoRefreshEnabled = false;
     }
 
     // ==================== 添加账号功能 ====================
