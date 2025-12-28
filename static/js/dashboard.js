@@ -136,10 +136,19 @@ class TokenDashboard {
             ? `<button class="btn-refresh-small" onclick="dashboard.refreshSingleToken(${index})" title="刷新此Token">刷新</button>`
             : '';
 
+        // Token 预览，点击切换显示
+        const tokenPreview = token.token_preview || 'N/A';
+        const tokenId = `token-preview-${index}`;
+
         return `
             <tr class="${token.error ? 'row-error' : ''}">
                 <td>${token.user_email || 'unknown'}</td>
-                <td><span class="token-preview">${token.token_preview || 'N/A'}</span></td>
+                <td>
+                    <span class="token-preview token-clickable" id="${tokenId}"
+                          data-full="${tokenPreview}" data-hidden="true"
+                          onclick="dashboard.toggleTokenPreview('${tokenId}')"
+                          title="点击显示/隐藏">****</span>
+                </td>
                 <td>${token.auth_type || 'Social'}</td>
                 <td>${token.remaining_usage || 0}</td>
                 <td>${this.formatDateTime(token.expires_at)}</td>
@@ -151,6 +160,23 @@ class TokenDashboard {
                 </td>
             </tr>
         `;
+    }
+
+    /**
+     * 切换 Token 预览显示
+     */
+    toggleTokenPreview(elementId) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+
+        const isHidden = el.dataset.hidden === 'true';
+        if (isHidden) {
+            el.textContent = el.dataset.full;
+            el.dataset.hidden = 'false';
+        } else {
+            el.textContent = '****';
+            el.dataset.hidden = 'true';
+        }
     }
 
     /**
@@ -673,10 +699,19 @@ class TokenDashboard {
         const toggleBtnClass = token.disabled ? 'btn-toggle disabled' : 'btn-toggle';
         const toggleBtnText = token.disabled ? '启用' : '禁用';
 
+        // 令牌预览，点击切换显示
+        const tokenValue = token.token || 'N/A';
+        const tokenId = `client-token-preview-${index}`;
+
         return `
             <tr>
                 <td>${token.name || '未命名'}</td>
-                <td><span class="token-preview">${token.token || 'N/A'}</span></td>
+                <td>
+                    <span class="token-preview token-clickable" id="${tokenId}"
+                          data-full="${tokenValue}" data-hidden="true"
+                          onclick="dashboard.toggleTokenPreview('${tokenId}')"
+                          title="点击显示/隐藏">****</span>
+                </td>
                 <td>${token.requestCount || 0}</td>
                 <td>${this.formatDateTime(token.lastUsedAt)}</td>
                 <td>${this.formatDateTime(token.createdAt)}</td>
