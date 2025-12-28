@@ -124,18 +124,25 @@ func (as *AuthService) RemoveConfig(index int) error {
 	// 保存旧配置用于回滚
 	oldConfigs := make([]AuthConfig, len(as.configs))
 	copy(oldConfigs, as.configs)
-	oldTokenManager := as.tokenManager
 
 	// 从内存中移除
 	as.configs = append(as.configs[:index], as.configs[index+1:]...)
-	// 重建 TokenManager 以确保状态一致
-	as.tokenManager = NewTokenManager(as.configs)
+
+	// 使用 TokenManager 的 RemoveConfig 方法，保留现有缓存
+	if err := as.tokenManager.RemoveConfig(index); err != nil {
+		// 回滚内存状态
+		as.configs = oldConfigs
+		logger.Error("TokenManager移除配置失败，已回滚",
+			logger.Err(err),
+			logger.Int("config_count", len(oldConfigs)))
+		return fmt.Errorf("移除配置失败: %w", err)
+	}
 
 	// 持久化到文件
 	if err := SaveConfigs(as.configs); err != nil {
-		// 回滚内存状态
+		// 回滚内存状态（需要重建 TokenManager）
 		as.configs = oldConfigs
-		as.tokenManager = oldTokenManager
+		as.tokenManager = NewTokenManager(oldConfigs)
 		logger.Error("持久化配置失败，已回滚",
 			logger.Err(err),
 			logger.Int("config_count", len(oldConfigs)))

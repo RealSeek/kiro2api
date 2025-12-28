@@ -18,6 +18,7 @@ type TokenManager struct {
 	configOrder  []string        // 配置顺序
 	currentIndex int             // 当前使用的token索引
 	exhausted    map[string]bool // 已耗尽的token记录
+	refreshing   bool            // 是否正在刷新
 }
 
 // SimpleTokenCache 简化的token缓存（纯数据结构，无锁）
@@ -191,54 +192,103 @@ func (tm *TokenManager) selectBestTokenUnlocked() *CachedToken {
 	return nil
 }
 
-// refreshCacheUnlocked 刷新token缓存
+// refreshCacheUnlocked 触发异步分批刷新token缓存
 // 内部方法：调用者必须持有 tm.mutex
 func (tm *TokenManager) refreshCacheUnlocked() error {
-	logger.Debug("开始刷新token缓存")
+	// 如果已经在刷新中，跳过
+	if tm.refreshing {
+		logger.Debug("token缓存刷新已在进行中，跳过")
+		return nil
+	}
 
-	for i, cfg := range tm.configs {
+	tm.refreshing = true
+	tm.lastRefresh = time.Now()
+
+	// 启动异步分批刷新
+	go tm.asyncBatchRefresh()
+
+	return nil
+}
+
+// asyncBatchRefresh 异步分批刷新所有token
+// 每个token刷新之间有间隔，避免短时间内发起过多请求
+func (tm *TokenManager) asyncBatchRefresh() {
+	defer func() {
+		tm.mutex.Lock()
+		tm.refreshing = false
+		tm.mutex.Unlock()
+	}()
+
+	logger.Debug("开始异步分批刷新token缓存")
+
+	// 获取配置快照（避免长时间持有锁）
+	tm.mutex.RLock()
+	configs := make([]AuthConfig, len(tm.configs))
+	copy(configs, tm.configs)
+	tm.mutex.RUnlock()
+
+	// 分批刷新，每个token之间间隔500ms
+	const refreshInterval = 500 * time.Millisecond
+
+	for i, cfg := range configs {
 		if cfg.Disabled {
 			continue
 		}
 
-		// 刷新token
-		token, err := tm.refreshSingleToken(cfg)
-		if err != nil {
-			logger.Warn("刷新单个token失败",
-				logger.Int("config_index", i),
-				logger.String("auth_type", cfg.AuthType),
-				logger.Err(err))
-			continue
+		// 刷新单个token
+		tm.refreshSingleTokenAsync(i, cfg)
+
+		// 如果不是最后一个，等待间隔
+		if i < len(configs)-1 {
+			time.Sleep(refreshInterval)
 		}
-
-		// 检查使用限制
-		var usageInfo *types.UsageLimits
-		var available float64
-
-		checker := NewUsageLimitsChecker()
-		if usage, checkErr := checker.CheckUsageLimits(token); checkErr == nil {
-			usageInfo = usage
-			available = CalculateAvailableCount(usage)
-		} else {
-			logger.Warn("检查使用限制失败", logger.Err(checkErr))
-		}
-
-		// 更新缓存（直接访问，已在tm.mutex保护下）
-		cacheKey := fmt.Sprintf(config.TokenCacheKeyFormat, i)
-		tm.cache.tokens[cacheKey] = &CachedToken{
-			Token:     token,
-			UsageInfo: usageInfo,
-			CachedAt:  time.Now(),
-			Available: available,
-		}
-
-		logger.Debug("token缓存更新",
-			logger.String("cache_key", cacheKey),
-			logger.Float64("available", available))
 	}
 
-	tm.lastRefresh = time.Now()
-	return nil
+	logger.Debug("异步分批刷新token缓存完成",
+		logger.Int("total_configs", len(configs)))
+}
+
+// refreshSingleTokenAsync 异步刷新单个token并更新缓存
+func (tm *TokenManager) refreshSingleTokenAsync(index int, cfg AuthConfig) {
+	// 刷新token
+	token, err := tm.refreshSingleToken(cfg)
+	if err != nil {
+		logger.Warn("刷新单个token失败",
+			logger.Int("config_index", index),
+			logger.String("auth_type", cfg.AuthType),
+			logger.Err(err))
+		return
+	}
+
+	// 检查使用限制
+	var usageInfo *types.UsageLimits
+	var available float64
+
+	checker := NewUsageLimitsChecker()
+	if usage, checkErr := checker.CheckUsageLimits(token); checkErr == nil {
+		usageInfo = usage
+		available = CalculateAvailableCount(usage)
+	} else {
+		logger.Warn("检查使用限制失败", logger.Err(checkErr))
+	}
+
+	// 更新缓存（需要加锁）
+	cacheKey := fmt.Sprintf(config.TokenCacheKeyFormat, index)
+
+	tm.mutex.Lock()
+	tm.cache.tokens[cacheKey] = &CachedToken{
+		Token:     token,
+		UsageInfo: usageInfo,
+		CachedAt:  time.Now(),
+		Available: available,
+	}
+	// 清除该token的耗尽标记
+	delete(tm.exhausted, cacheKey)
+	tm.mutex.Unlock()
+
+	logger.Debug("token缓存更新",
+		logger.String("cache_key", cacheKey),
+		logger.Float64("available", available))
 }
 
 // IsUsable 检查缓存的token是否可用
@@ -312,39 +362,73 @@ func (tm *TokenManager) AddConfig(cfg AuthConfig) {
 	cacheKey := fmt.Sprintf(config.TokenCacheKeyFormat, newIndex)
 	tm.configOrder = append(tm.configOrder, cacheKey)
 
-	// 尝试刷新新添加的token
+	// 异步刷新新添加的token（不阻塞）
 	if !cfg.Disabled {
-		token, err := tm.refreshSingleToken(cfg)
-		if err != nil {
-			logger.Warn("刷新新添加的token失败",
-				logger.Int("config_index", newIndex),
-				logger.String("auth_type", cfg.AuthType),
-				logger.Err(err))
-			return
-		}
-
-		// 检查使用限制
-		var usageInfo *types.UsageLimits
-		var available float64
-
-		checker := NewUsageLimitsChecker()
-		if usage, checkErr := checker.CheckUsageLimits(token); checkErr == nil {
-			usageInfo = usage
-			available = CalculateAvailableCount(usage)
-		} else {
-			logger.Warn("检查新token使用限制失败", logger.Err(checkErr))
-		}
-
-		// 添加到缓存
-		tm.cache.tokens[cacheKey] = &CachedToken{
-			Token:     token,
-			UsageInfo: usageInfo,
-			CachedAt:  time.Now(),
-			Available: available,
-		}
-
-		logger.Info("新token已添加并缓存",
-			logger.String("cache_key", cacheKey),
-			logger.Float64("available", available))
+		go tm.refreshSingleTokenAsync(newIndex, cfg)
 	}
+
+	logger.Info("新配置已添加，正在异步刷新",
+		logger.String("cache_key", cacheKey),
+		logger.String("auth_type", cfg.AuthType))
+}
+
+// RemoveConfig 动态移除认证配置
+// 保留现有缓存，只移除指定索引的配置
+func (tm *TokenManager) RemoveConfig(index int) error {
+	tm.mutex.Lock()
+	defer tm.mutex.Unlock()
+
+	if index < 0 || index >= len(tm.configs) {
+		return fmt.Errorf("无效的索引: %d", index)
+	}
+
+	// 移除配置
+	tm.configs = append(tm.configs[:index], tm.configs[index+1:]...)
+
+	// 移除对应的缓存
+	oldCacheKey := fmt.Sprintf(config.TokenCacheKeyFormat, index)
+	delete(tm.cache.tokens, oldCacheKey)
+	delete(tm.exhausted, oldCacheKey)
+
+	// 重建配置顺序和缓存键映射
+	// 需要将索引大于 index 的缓存键重新映射
+	newCache := make(map[string]*CachedToken)
+	newOrder := make([]string, 0, len(tm.configs))
+	newExhausted := make(map[string]bool)
+
+	for i := range tm.configs {
+		newCacheKey := fmt.Sprintf(config.TokenCacheKeyFormat, i)
+		newOrder = append(newOrder, newCacheKey)
+
+		// 计算旧的缓存键
+		oldIdx := i
+		if i >= index {
+			oldIdx = i + 1 // 原来的索引
+		}
+		oldKey := fmt.Sprintf(config.TokenCacheKeyFormat, oldIdx)
+
+		// 迁移缓存
+		if cached, exists := tm.cache.tokens[oldKey]; exists {
+			newCache[newCacheKey] = cached
+		}
+		// 迁移耗尽标记
+		if tm.exhausted[oldKey] {
+			newExhausted[newCacheKey] = true
+		}
+	}
+
+	tm.cache.tokens = newCache
+	tm.configOrder = newOrder
+	tm.exhausted = newExhausted
+
+	// 调整当前索引
+	if tm.currentIndex >= len(tm.configs) {
+		tm.currentIndex = 0
+	}
+
+	logger.Info("配置已移除",
+		logger.Int("removed_index", index),
+		logger.Int("remaining_configs", len(tm.configs)))
+
+	return nil
 }
