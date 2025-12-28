@@ -673,9 +673,13 @@ class TokenDashboard {
         const toggleBtnClass = token.disabled ? 'btn-toggle disabled' : 'btn-toggle';
         const toggleBtnText = token.disabled ? '启用' : '禁用';
 
+        // 脱敏令牌显示
+        const maskedToken = this.maskToken(token.token);
+
         return `
             <tr>
                 <td>${token.name || '未命名'}</td>
+                <td><span class="token-preview">${maskedToken}</span></td>
                 <td>${token.requestCount || 0}</td>
                 <td>${this.formatDateTime(token.lastUsedAt)}</td>
                 <td>${this.formatDateTime(token.createdAt)}</td>
@@ -686,6 +690,16 @@ class TokenDashboard {
                 </td>
             </tr>
         `;
+    }
+
+    /**
+     * 脱敏令牌显示
+     */
+    maskToken(token) {
+        if (!token || token.length <= 8) {
+            return '****';
+        }
+        return token.substring(0, 4) + '****' + token.substring(token.length - 4);
     }
 
     /**
@@ -710,7 +724,7 @@ class TokenDashboard {
     showClientTokenEmpty(container) {
         container.innerHTML = `
             <tr>
-                <td colspan="6" class="empty-state">
+                <td colspan="7" class="empty-state">
                     <div class="empty-icon">🔑</div>
                     <p>暂无客户端令牌</p>
                     <p class="empty-hint">点击上方"添加令牌"按钮添加第一个客户端令牌</p>
@@ -725,7 +739,7 @@ class TokenDashboard {
     showClientTokenLoading(container, message) {
         container.innerHTML = `
             <tr>
-                <td colspan="6" class="loading">
+                <td colspan="7" class="loading">
                     <div class="spinner"></div>
                     ${message}
                 </td>
@@ -739,7 +753,7 @@ class TokenDashboard {
     showClientTokenError(container, message) {
         container.innerHTML = `
             <tr>
-                <td colspan="6" class="error">
+                <td colspan="7" class="error">
                     ${message}
                 </td>
             </tr>
