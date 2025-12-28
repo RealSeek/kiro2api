@@ -160,10 +160,13 @@ func buildCodeWhispererRequest(c *gin.Context, anthropicReq types.AnthropicReque
 		logger.Int("tools_count", len(cwReq.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext.Tools)),
 		logger.String("tools_names", toolNamesPreview))
 
-	req, err := http.NewRequest("POST", config.CodeWhispererURL, bytes.NewReader(cwReqBody))
+	req, err := http.NewRequest("POST", config.GetCodeWhispererURLV2(), bytes.NewReader(cwReqBody))
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %v", err)
 	}
+
+	// 生成 machineID（基于 refreshToken）
+	machineID := config.GenerateMachineID(tokenInfo.RefreshToken)
 
 	req.Header.Set("Authorization", "Bearer "+tokenInfo.AccessToken)
 	req.Header.Set("Content-Type", "application/json")
@@ -171,10 +174,15 @@ func buildCodeWhispererRequest(c *gin.Context, anthropicReq types.AnthropicReque
 		req.Header.Set("Accept", "text/event-stream")
 	}
 
-	// 添加上游请求必需的header
-	req.Header.Set("x-amzn-kiro-agent-mode", "spec")
-	req.Header.Set("x-amz-user-agent", "aws-sdk-js/1.0.18 KiroIDE-0.2.13-66c23a8c5d15afabec89ef9954ef52a119f10d369df04d548fc6c1eac694b0d1")
-	req.Header.Set("user-agent", "aws-sdk-js/1.0.18 ua/2.1 os/darwin#25.0.0 lang/js md/nodejs#20.16.0 api/codewhispererstreaming#1.0.18 m/E KiroIDE-0.2.13-66c23a8c5d15afabec89ef9954ef52a119f10d369df04d548fc6c1eac694b0d1")
+	// 添加上游请求必需的header（参考 kiro.rs）
+	req.Header.Set("x-amzn-codewhisperer-optout", "true")
+	req.Header.Set("x-amzn-kiro-agent-mode", "vibe")
+	req.Header.Set("x-amz-user-agent", config.BuildXAmzUserAgent(machineID))
+	req.Header.Set("User-Agent", config.BuildUserAgent(machineID))
+	req.Header.Set("Host", config.GetCodeWhispererDomain())
+	req.Header.Set("amz-sdk-invocation-id", config.GenerateInvocationID())
+	req.Header.Set("amz-sdk-request", "attempt=1; max=3")
+	req.Header.Set("Connection", "close")
 
 	return req, nil
 }

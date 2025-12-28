@@ -1,10 +1,9 @@
 package auth
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"io"
+	"kiro2api/config"
 	"kiro2api/logger"
 	"kiro2api/types"
 	"kiro2api/utils"
@@ -24,10 +23,10 @@ func NewUsageLimitsChecker() *UsageLimitsChecker {
 	}
 }
 
-// CheckUsageLimits 检���token的使用限制 (基于token.md API规范)
+// CheckUsageLimits 检查token的使用限制 (基于token.md API规范)
 func (c *UsageLimitsChecker) CheckUsageLimits(token types.TokenInfo) (*types.UsageLimits, error) {
-	// 构建请求URL (完全遵循token.md中的示例)
-	baseURL := "https://codewhisperer.us-east-1.amazonaws.com/getUsageLimits"
+	// 构建请求URL (使用新的域名格式)
+	baseURL := "https://" + config.GetCodeWhispererDomain() + "/getUsageLimits"
 	params := url.Values{}
 	params.Add("isEmailRequired", "true")
 	params.Add("origin", "AI_EDITOR")
@@ -41,11 +40,14 @@ func (c *UsageLimitsChecker) CheckUsageLimits(token types.TokenInfo) (*types.Usa
 		return nil, fmt.Errorf("创建使用限制检查请求失败: %v", err)
 	}
 
-	// 设置请求头 (严格按照token.md中的示例)
-	req.Header.Set("x-amz-user-agent", "aws-sdk-js/1.0.0 KiroIDE-0.2.13-66c23a8c5d15afabec89ef9954ef52a119f10d369df04d548fc6c1eac694b0d1")
-	req.Header.Set("user-agent", "aws-sdk-js/1.0.0 ua/2.1 os/darwin#24.6.0 lang/js md/nodejs#20.16.0 api/codewhispererruntime#1.0.0 m/E KiroIDE-0.2.13-66c23a8c5d15afabec89ef9954ef52a119f10d369df04d548fc6c1eac694b0d1")
-	req.Header.Set("host", "codewhisperer.us-east-1.amazonaws.com")
-	req.Header.Set("amz-sdk-invocation-id", generateInvocationID())
+	// 生成 machineID（基于 refreshToken）
+	machineID := config.GenerateMachineID(token.RefreshToken)
+
+	// 设置请求头 (参考 kiro.rs)
+	req.Header.Set("x-amz-user-agent", config.BuildXAmzUserAgent(machineID))
+	req.Header.Set("User-Agent", config.BuildUserAgent(machineID))
+	req.Header.Set("Host", config.GetCodeWhispererDomain())
+	req.Header.Set("amz-sdk-invocation-id", config.GenerateInvocationID())
 	req.Header.Set("amz-sdk-request", "attempt=1; max=1")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.AccessToken))
 	req.Header.Set("Connection", "close")
@@ -144,18 +146,4 @@ func (c *UsageLimitsChecker) logUsageLimits(limits *types.UsageLimits) {
 		logger.String("subscription_type", limits.SubscriptionInfo.Type),
 		logger.String("subscription_title", limits.SubscriptionInfo.SubscriptionTitle),
 		logger.String("user_email", limits.UserInfo.Email))
-}
-
-// generateInvocationID 生成请求ID (UUID v4格式，按照文档规范)
-func generateInvocationID() string {
-	var b [16]byte
-	rand.Read(b[:])
-	// 设置 UUID v4 格式位
-	b[6] = (b[6] & 0x0F) | 0x40 // Version 4
-	b[8] = (b[8] & 0x3F) | 0x80 // Variant bits
-
-	var buf [32]byte
-	hex.Encode(buf[:], b[:])
-	s := string(buf[:])
-	return fmt.Sprintf("%s-%s-%s-%s-%s", s[0:8], s[8:12], s[12:16], s[16:20], s[20:32])
 }

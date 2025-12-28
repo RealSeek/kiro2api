@@ -34,12 +34,23 @@ func refreshSocialToken(refreshToken string) (types.TokenInfo, error) {
 		return types.TokenInfo{}, fmt.Errorf("序列化请求失败: %v", err)
 	}
 
-	req, err := http.NewRequest("POST", config.RefreshTokenURL, bytes.NewBuffer(reqBody))
+	// 使用动态刷新URL
+	refreshURL := "https://" + config.GetRefreshDomain() + "/refreshToken"
+	req, err := http.NewRequest("POST", refreshURL, bytes.NewBuffer(reqBody))
 	if err != nil {
 		return types.TokenInfo{}, fmt.Errorf("创建请求失败: %v", err)
 	}
 
+	// 生成 machineID（基于 refreshToken）
+	machineID := config.GenerateMachineID(refreshToken)
+
+	// 设置请求头 (参考 kiro.rs token_manager.rs)
+	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", config.BuildRefreshUserAgent(machineID))
+	req.Header.Set("Accept-Encoding", "gzip, compress, deflate, br")
+	req.Header.Set("Host", config.GetRefreshDomain())
+	req.Header.Set("Connection", "close")
 
 	client := utils.SharedHTTPClient
 	resp, err := client.Do(req)
