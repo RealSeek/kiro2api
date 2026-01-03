@@ -273,6 +273,11 @@ func StartServer(port string, clientTokenManager *auth.ClientTokenManager, authS
 		handleOpenAINonStreamRequest(c, anthropicReq, tokenInfo)
 	})
 
+	// 静默处理 Kiro 客户端的遥测请求
+	r.POST("/api/event_logging/batch", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"success": true})
+	})
+
 	r.NoRoute(func(c *gin.Context) {
 		logger.Warn("访问未知端点",
 			logger.String("path", c.Request.URL.Path),
