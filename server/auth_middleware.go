@@ -91,8 +91,9 @@ func GetSessionID(c *gin.Context) string {
 // 跳过 /v1 开头的 API 路由（外部客户端 API 使用 Authorization header）
 func CSRFMiddleware(secureCookie bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 跳过 /v1 API 路由（外部 API 使用 token 认证，不需要 CSRF）
-		if strings.HasPrefix(c.Request.URL.Path, "/v1") {
+		// 跳过外部 API 路由（使用 token 认证，不需要 CSRF）
+		if strings.HasPrefix(c.Request.URL.Path, "/v1") ||
+			strings.HasPrefix(c.Request.URL.Path, "/api/event_logging") {
 			c.Next()
 			return
 		}
