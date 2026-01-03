@@ -155,10 +155,16 @@ func (tm *TokenManager) selectBestTokenUnlocked() *CachedToken {
 				}
 				// token不可用，需要同步刷新
 				if currentIdx < len(tm.configs) && !tm.configs[currentIdx].Disabled {
-					tm.refreshing[currentKey] = true
 					cfg := tm.configs[currentIdx]
-					// 同步刷新（会更新缓存）
-					refreshed := tm.refreshSingleTokenSync(currentIdx, cfg)
+					// 检查是否已有其他请求在刷新
+					if tm.refreshing[currentKey] {
+						// 等待刷新完成后重试
+						tm.currentIndex = (tm.currentIndex + 1) % len(tm.configOrder)
+						continue
+					}
+					tm.refreshing[currentKey] = true
+					// 同步刷新（释放锁后执行网络请求）
+					refreshed := tm.refreshSingleTokenSyncUnlock(currentIdx, cfg, currentKey)
 					if refreshed != nil && refreshed.IsUsable() {
 						logger.Debug("同步刷新后使用token",
 							logger.String("cache_key", currentKey),
@@ -179,10 +185,16 @@ func (tm *TokenManager) selectBestTokenUnlocked() *CachedToken {
 		} else {
 			// 缓存中不存在，同步刷新（懒加载）
 			if currentIdx < len(tm.configs) && !tm.configs[currentIdx].Disabled {
-				tm.refreshing[currentKey] = true
 				cfg := tm.configs[currentIdx]
-				// 同步刷新（会更新缓存）
-				refreshed := tm.refreshSingleTokenSync(currentIdx, cfg)
+				// 检查是否已有其他请求在刷新
+				if tm.refreshing[currentKey] {
+					// 等待刷新完成后重试
+					tm.currentIndex = (tm.currentIndex + 1) % len(tm.configOrder)
+					continue
+				}
+				tm.refreshing[currentKey] = true
+				// 同步刷新（释放锁后执行网络请求）
+				refreshed := tm.refreshSingleTokenSyncUnlock(currentIdx, cfg, currentKey)
 				if refreshed != nil && refreshed.IsUsable() {
 					logger.Debug("懒加载刷新后使用token",
 						logger.String("cache_key", currentKey),
@@ -284,6 +296,7 @@ func (tm *TokenManager) refreshSingleTokenAsync(index int, cfg AuthConfig) {
 
 // refreshSingleTokenSync 同步刷新单个token并更新缓存（懒加载用）
 // 返回刷新后的 CachedToken，失败返回 nil
+// 注意：此方法假设调用者已持有锁，不会释放锁
 func (tm *TokenManager) refreshSingleTokenSync(index int, cfg AuthConfig) *CachedToken {
 	cacheKey := fmt.Sprintf(config.TokenCacheKeyFormat, index)
 
@@ -326,6 +339,66 @@ func (tm *TokenManager) refreshSingleTokenSync(index int, cfg AuthConfig) *Cache
 	tm.cache.tokens[cacheKey] = cached
 	delete(tm.exhausted, cacheKey)
 	delete(tm.refreshing, cacheKey)
+
+	logger.Info("同步刷新token成功",
+		logger.String("cache_key", cacheKey),
+		logger.Float64("available", available))
+
+	return cached
+}
+
+// refreshSingleTokenSyncUnlock 同步刷新token，在网络请求期间释放锁
+// 调用者必须持有 tm.mutex，此方法会临时释放锁执行网络请求，然后重新获取锁
+// 返回刷新后的 CachedToken，失败返回 nil
+func (tm *TokenManager) refreshSingleTokenSyncUnlock(index int, cfg AuthConfig, cacheKey string) *CachedToken {
+	logger.Info("同步刷新token（懒加载，释放锁）",
+		logger.Int("index", index),
+		logger.String("auth_type", cfg.AuthType))
+
+	// 释放锁，执行网络请求
+	tm.mutex.Unlock()
+
+	// 刷新token（网络请求）
+	token, err := tm.refreshSingleToken(cfg)
+
+	// 检查使用限制（也是网络请求）
+	var usageInfo *types.UsageLimits
+	var available float64
+	if err == nil {
+		checker := NewUsageLimitsChecker()
+		if usage, checkErr := checker.CheckUsageLimits(token); checkErr == nil {
+			usageInfo = usage
+			available = CalculateAvailableCount(usage)
+		} else {
+			logger.Warn("检查使用限制失败", logger.Err(checkErr))
+			available = 1
+		}
+	}
+
+	// 重新获取锁
+	tm.mutex.Lock()
+
+	// 清除刷新标记
+	delete(tm.refreshing, cacheKey)
+
+	if err != nil {
+		logger.Warn("同步刷新token失败",
+			logger.Int("config_index", index),
+			logger.String("auth_type", cfg.AuthType),
+			logger.Err(err))
+		return nil
+	}
+
+	cached := &CachedToken{
+		Token:     token,
+		UsageInfo: usageInfo,
+		CachedAt:  time.Now(),
+		Available: available,
+	}
+
+	// 更新缓存
+	tm.cache.tokens[cacheKey] = cached
+	delete(tm.exhausted, cacheKey)
 
 	logger.Info("同步刷新token成功",
 		logger.String("cache_key", cacheKey),
