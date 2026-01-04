@@ -46,16 +46,20 @@ func NewSimpleTokenCache(ttl time.Duration) *SimpleTokenCache {
 
 // NewTokenManager 创建新的token管理器
 func NewTokenManager(configs []AuthConfig) *TokenManager {
+	// 深拷贝配置，避免与外部共享底层数组
+	configsCopy := make([]AuthConfig, len(configs))
+	copy(configsCopy, configs)
+
 	// 生成配置顺序
-	configOrder := generateConfigOrder(configs)
+	configOrder := generateConfigOrder(configsCopy)
 
 	logger.Info("TokenManager初始化（按需刷新策略）",
-		logger.Int("config_count", len(configs)),
+		logger.Int("config_count", len(configsCopy)),
 		logger.Int("config_order_count", len(configOrder)))
 
 	return &TokenManager{
 		cache:        NewSimpleTokenCache(config.TokenCacheTTL),
-		configs:      configs,
+		configs:      configsCopy,
 		configOrder:  configOrder,
 		currentIndex: 0,
 		exhausted:    make(map[string]bool),
@@ -254,6 +258,37 @@ func (tm *TokenManager) refreshSingleTokenAsync(index int, cfg AuthConfig) {
 		delete(tm.refreshing, cacheKey)
 		tm.mutex.Unlock()
 	}()
+
+	// 验证索引和配置的一致性（防止并发修改导致的错误）
+	tm.mutex.RLock()
+	if index < 0 || index >= len(tm.configs) {
+		tm.mutex.RUnlock()
+		logger.Warn("刷新token时索引越界",
+			logger.Int("index", index),
+			logger.Int("configs_len", len(tm.configs)))
+		return
+	}
+	currentCfg := tm.configs[index]
+	// 检查配置是否匹配（通过 refreshToken 验证）
+	if currentCfg.RefreshToken != cfg.RefreshToken {
+		tm.mutex.RUnlock()
+		logger.Warn("刷新token时配置不匹配，可能已被修改或删除",
+			logger.Int("index", index),
+			logger.String("expected_prefix", func() string {
+				if len(cfg.RefreshToken) > 10 {
+					return cfg.RefreshToken[:10]
+				}
+				return cfg.RefreshToken
+			}()),
+			logger.String("current_prefix", func() string {
+				if len(currentCfg.RefreshToken) > 10 {
+					return currentCfg.RefreshToken[:10]
+				}
+				return currentCfg.RefreshToken
+			}()))
+		return
+	}
+	tm.mutex.RUnlock()
 
 	// 刷新token
 	token, err := tm.refreshSingleToken(cfg)
@@ -618,29 +653,70 @@ func (tm *TokenManager) RefreshSingleTokenByIndex(index int) error {
 // 分批异步刷新，每个 Token 间隔 500ms
 func (tm *TokenManager) RefreshAllTokens() {
 	tm.mutex.RLock()
-	configs := make([]AuthConfig, len(tm.configs))
-	copy(configs, tm.configs)
+	// 创建配置快照，包含 refreshToken 作为唯一标识
+	type configSnapshot struct {
+		cfg           AuthConfig
+		refreshToken  string
+	}
+	snapshots := make([]configSnapshot, 0, len(tm.configs))
+	for _, cfg := range tm.configs {
+		snapshots = append(snapshots, configSnapshot{
+			cfg:          cfg,
+			refreshToken: cfg.RefreshToken,
+		})
+	}
 	tm.mutex.RUnlock()
 
-	logger.Info("开始刷新所有Token", logger.Int("total", len(configs)))
+	logger.Info("开始刷新所有Token", logger.Int("total", len(snapshots)))
 
 	// 异步分批刷新
 	go func() {
 		const refreshInterval = 500 * time.Millisecond
 
-		for i, cfg := range configs {
-			if cfg.Disabled {
+		for snapIdx, snapshot := range snapshots {
+			if snapshot.cfg.Disabled {
+				logger.Debug("跳过已禁用的配置", logger.Int("snapshot_index", snapIdx))
 				continue
 			}
 
-			tm.refreshSingleTokenAsync(i, cfg)
+			// 记录刷新前的 refreshToken 前缀（用于调试）
+			tokenPrefix := ""
+			if len(snapshot.refreshToken) > 10 {
+				tokenPrefix = snapshot.refreshToken[:10]
+			}
+
+			// 根据 refreshToken 动态查找当前索引（关键修复）
+			tm.mutex.RLock()
+			currentIndex := -1
+			for i, cfg := range tm.configs {
+				if cfg.RefreshToken == snapshot.refreshToken {
+					currentIndex = i
+					break
+				}
+			}
+			tm.mutex.RUnlock()
+
+			if currentIndex < 0 {
+				logger.Warn("配置已被删除，跳过刷新",
+					logger.String("refresh_token_prefix", tokenPrefix),
+					logger.String("auth_type", snapshot.cfg.AuthType))
+				continue
+			}
+
+			logger.Info("刷新Token",
+				logger.Int("current_index", currentIndex),
+				logger.String("auth_type", snapshot.cfg.AuthType),
+				logger.String("refresh_token_prefix", tokenPrefix))
+
+			// 使用当前索引刷新（而非快照索引）
+			tm.refreshSingleTokenAsync(currentIndex, snapshot.cfg)
 
 			// 如果不是最后一个，等待间隔
-			if i < len(configs)-1 {
+			if snapIdx < len(snapshots)-1 {
 				time.Sleep(refreshInterval)
 			}
 		}
 
-		logger.Info("所有Token刷新完成", logger.Int("total", len(configs)))
+		logger.Info("所有Token刷新完成", logger.Int("total", len(snapshots)))
 	}()
 }
